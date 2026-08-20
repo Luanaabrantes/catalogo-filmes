@@ -1,0 +1,889 @@
+/* =========================================================
+   CONFIGURAÇÕES GERAIS
+========================================================= */
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+
+    background: #f3f4f6;
+
+    color: #1f2937;
+}
+
+button,
+input,
+textarea {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+a {
+    text-decoration: none;
+}
+
+
+/* =========================================================
+   CATÁLOGO
+========================================================= */
+
+.catalogo-page {
+    min-height: 100vh;
+
+    background: #f3f4f6;
+}
+
+
+/* =========================================================
+   CABEÇALHO DO CATÁLOGO
+========================================================= */
+
+.catalogo-page header {
+    width: 100%;
+
+    min-height: 72px;
+
+    padding: 14px 5%;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    background: #111827;
+
+    color: #ffffff;
+
+    box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+
+.catalogo-page header > div:first-child {
+    display: flex;
+    flex-direction: column;
+}
+
+
+.catalogo-page header h1 {
+    margin: 0;
+
+    color: #ffffff;
+
+    font-size: 25px;
+
+    font-weight: 700;
+}
+
+
+.catalogo-page header p {
+    margin: 4px 0 0;
+
+    color: #d1d5db;
+
+    font-size: 13px;
+}
+
+
+.catalogo-page header > div:last-child {
+    display: flex;
+
+    align-items: center;
+
+    gap: 16px;
+}
+
+
+#nomeUsuario {
+    color: #f9fafb;
+
+    font-size: 13px;
+
+    font-weight: 600;
+}
+
+
+#btnLogout {
+    padding: 8px 16px;
+
+    border: 1px solid #d1d5db;
+
+    border-radius: 6px;
+
+    background: transparent;
+
+    color: #ffffff;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+    transition: 0.2s;
+}
+
+
+#btnLogout:hover {
+    background: #ffffff;
+
+    color: #111827;
+}
+
+
+/* =========================================================
+   ÁREA PRINCIPAL DO CATÁLOGO
+========================================================= */
+
+.catalogo-page main {
+    width: 94%;
+
+    max-width: 1280px;
+
+    margin: 28px auto 60px;
+}
+
+
+#mensagemCarregamento {
+    padding: 40px 0;
+
+    text-align: center;
+
+    color: #6b7280;
+
+    font-size: 14px;
+}
+
+
+/* =========================================================
+   GRID DOS FILMES
+========================================================= */
+
+.lista-filmes {
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+
+    gap: 22px;
+
+    align-items: start;
+}
+
+
+/* =========================================================
+   CARD DO FILME
+========================================================= */
+
+.filme-card {
+    overflow: hidden;
+
+    display: flex;
+
+    flex-direction: column;
+
+    background: #ffffff;
+
+    border: 1px solid #e5e7eb;
+
+    border-radius: 12px;
+
+    box-shadow:
+        0 4px 14px rgba(0, 0, 0, 0.08);
+
+    transition:
+        transform 0.18s,
+        box-shadow 0.18s;
+}
+
+
+.filme-card:hover {
+    transform: translateY(-3px);
+
+    box-shadow:
+        0 8px 20px rgba(0, 0, 0, 0.11);
+}
+
+
+/* =========================================================
+   PÔSTER
+========================================================= */
+
+.filme-card img {
+    width: 100%;
+
+    height: 320px;
+
+    display: block;
+
+    object-fit: cover;
+
+    background: #e5e7eb;
+}
+
+
+.sem-poster {
+    width: 100%;
+
+    height: 320px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    padding: 20px;
+
+    background: #e5e7eb;
+
+    color: #6b7280;
+
+    font-size: 13px;
+
+    text-align: center;
+}
+
+
+/* =========================================================
+   CONTEÚDO DO CARD
+========================================================= */
+
+.filme-conteudo {
+    flex: 1;
+
+    display: flex;
+
+    flex-direction: column;
+
+    padding: 16px;
+}
+
+
+.filme-conteudo h2 {
+    min-height: 44px;
+
+    margin: 0 0 5px;
+
+    color: #111827;
+
+    font-size: 17px;
+
+    font-weight: 700;
+
+    line-height: 1.3;
+
+    display: -webkit-box;
+
+    -webkit-line-clamp: 2;
+
+    -webkit-box-orient: vertical;
+
+    overflow: hidden;
+}
+
+
+/* =========================================================
+   ANO
+========================================================= */
+
+.ano {
+    margin: 0 0 12px;
+
+    color: #6b7280;
+
+    font-size: 12px;
+
+    font-weight: 600;
+}
+
+
+/* =========================================================
+   SINOPSE
+========================================================= */
+
+.sinopse {
+    height: 82px;
+
+    margin: 0 0 16px;
+
+    overflow: hidden;
+
+    display: -webkit-box;
+
+    -webkit-line-clamp: 4;
+
+    -webkit-box-orient: vertical;
+
+    color: #4b5563;
+
+    font-size: 13px;
+
+    line-height: 1.55;
+}
+
+
+/* =========================================================
+   FAVORITO
+========================================================= */
+
+.btn-favorito {
+    width: 100%;
+
+    min-height: 40px;
+
+    margin-top: auto;
+
+    margin-bottom: 13px;
+
+    padding: 9px;
+
+    border: 1px solid #d1d5db;
+
+    border-radius: 6px;
+
+    background: #ffffff;
+
+    color: #374151;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+    transition: 0.2s;
+}
+
+
+.btn-favorito:hover {
+    background: #f9fafb;
+
+    border-color: #9ca3af;
+}
+
+
+.btn-favorito.favoritado {
+    background: #fee2e2;
+
+    border-color: #fecaca;
+
+    color: #b91c1c;
+}
+
+
+.btn-favorito.favoritado:hover {
+    background: #fecaca;
+}
+
+
+/* =========================================================
+   COMENTÁRIOS JÁ SALVOS
+========================================================= */
+
+.lista-comentarios {
+    margin: 0 0 13px;
+}
+
+
+.comentario-item {
+    margin-top: 8px;
+
+    padding: 10px 11px;
+
+    background: #f9fafb;
+
+    border: 1px solid #e5e7eb;
+
+    border-left: 3px solid #2563eb;
+
+    border-radius: 6px;
+}
+
+
+.comentario-label {
+    display: block;
+
+    margin-bottom: 5px;
+
+    color: #6b7280;
+
+    font-size: 10px;
+
+    font-weight: 700;
+
+    letter-spacing: 0.5px;
+
+    text-transform: uppercase;
+}
+
+
+.comentario-item p {
+    margin: 0 0 7px;
+
+    color: #374151;
+
+    font-size: 12px;
+
+    line-height: 1.5;
+}
+
+
+.btn-excluir-comentario {
+    padding: 0;
+
+    border: none;
+
+    background: transparent;
+
+    color: #b91c1c;
+
+    font-size: 11px;
+
+    font-weight: 600;
+}
+
+
+.btn-excluir-comentario:hover {
+    text-decoration: underline;
+}
+
+
+/* =========================================================
+   ÁREA PARA NOVO COMENTÁRIO
+========================================================= */
+
+.comentario-area {
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 8px;
+
+    padding-top: 12px;
+
+    border-top: 1px solid #e5e7eb;
+}
+
+
+.comentario-area textarea {
+    width: 100%;
+
+    min-height: 72px;
+
+    padding: 10px;
+
+    resize: vertical;
+
+    border: 1px solid #d1d5db;
+
+    border-radius: 6px;
+
+    outline: none;
+
+    background: #ffffff;
+
+    color: #1f2937;
+
+    font-size: 13px;
+
+    line-height: 1.4;
+
+    transition:
+        border-color 0.2s,
+        box-shadow 0.2s;
+}
+
+
+.comentario-area textarea::placeholder {
+    color: #9ca3af;
+}
+
+
+.comentario-area textarea:focus {
+    border-color: #2563eb;
+
+    box-shadow:
+        0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+
+/* =========================================================
+   BOTÃO COMENTAR
+========================================================= */
+
+.btn-comentar {
+    width: 100%;
+
+    padding: 10px;
+
+    border: none;
+
+    border-radius: 6px;
+
+    background: #2563eb;
+
+    color: #ffffff;
+
+    font-size: 13px;
+
+    font-weight: 700;
+
+    transition: 0.2s;
+}
+
+
+.btn-comentar:hover {
+    background: #1d4ed8;
+}
+
+
+/* =========================================================
+   LOGIN / CADASTRO
+========================================================= */
+
+.auth-page {
+    min-height: 100vh;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    padding: 25px;
+
+    background: #111827;
+}
+
+
+/* =========================================================
+   CARD DO LOGIN / CADASTRO
+========================================================= */
+
+.auth-card {
+    width: 100%;
+
+    max-width: 420px;
+
+    padding: 36px;
+
+    background: #ffffff;
+
+    border-radius: 12px;
+
+    box-shadow:
+        0 18px 45px rgba(0, 0, 0, 0.22);
+}
+
+
+/* =========================================================
+   TÍTULO DO SISTEMA
+========================================================= */
+
+.auth-title {
+    margin-bottom: 30px;
+
+    text-align: center;
+}
+
+
+.auth-title h1 {
+    margin: 0;
+
+    color: #111827;
+
+    font-size: 25px;
+
+    font-weight: 700;
+
+    letter-spacing: -0.3px;
+}
+
+
+.auth-title p {
+    margin: 5px 0 0;
+
+    color: #6b7280;
+
+    font-size: 13px;
+}
+
+
+/* =========================================================
+   TÍTULO LOGIN / CADASTRO
+========================================================= */
+
+.auth-card > h2 {
+    margin: 0 0 22px;
+
+    color: #111827;
+
+    font-size: 21px;
+
+    font-weight: 700;
+}
+
+
+/* =========================================================
+   FORM LOGIN / CADASTRO
+========================================================= */
+
+.auth-card form {
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 17px;
+}
+
+
+.form-group {
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 7px;
+}
+
+
+.form-group label {
+    color: #374151;
+
+    font-size: 13px;
+
+    font-weight: 600;
+}
+
+
+.form-group input {
+    width: 100%;
+
+    height: 45px;
+
+    padding: 0 12px;
+
+    border: 1px solid #d1d5db;
+
+    border-radius: 6px;
+
+    outline: none;
+
+    background: #ffffff;
+
+    color: #111827;
+
+    font-size: 14px;
+
+    transition:
+        border-color 0.2s,
+        box-shadow 0.2s;
+}
+
+
+.form-group input::placeholder {
+    color: #9ca3af;
+}
+
+
+.form-group input:focus {
+    border-color: #2563eb;
+
+    box-shadow:
+        0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+
+/* =========================================================
+   BOTÃO LOGIN / CADASTRO
+========================================================= */
+
+.btn-auth {
+    width: 100%;
+
+    height: 45px;
+
+    margin-top: 3px;
+
+    padding: 10px;
+
+    border: none;
+
+    border-radius: 6px;
+
+    background: #2563eb;
+
+    color: #ffffff;
+
+    font-size: 14px;
+
+    font-weight: 700;
+
+    transition: 0.2s;
+}
+
+
+.btn-auth:hover {
+    background: #1d4ed8;
+}
+
+
+/* =========================================================
+   MENSAGENS
+========================================================= */
+
+#mensagem {
+    min-height: 18px;
+
+    margin: 13px 0 0;
+
+    font-size: 12px;
+}
+
+
+.mensagem-erro {
+    color: #b91c1c;
+}
+
+
+.mensagem-sucesso {
+    color: #15803d;
+}
+
+
+/* =========================================================
+   RODAPÉ LOGIN / CADASTRO
+========================================================= */
+
+.auth-footer {
+    margin-top: 23px;
+
+    padding-top: 20px;
+
+    border-top: 1px solid #e5e7eb;
+
+    text-align: center;
+
+    color: #6b7280;
+
+    font-size: 13px;
+}
+
+
+.auth-footer a {
+    margin-left: 4px;
+
+    color: #2563eb;
+
+    font-weight: 700;
+}
+
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+
+/* =========================================================
+   RESPONSIVIDADE — CATÁLOGO
+========================================================= */
+
+@media (max-width: 1100px) {
+
+    .lista-filmes {
+        grid-template-columns:
+            repeat(3, minmax(0, 1fr));
+    }
+
+}
+
+
+@media (max-width: 800px) {
+
+    .lista-filmes {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+    }
+
+
+    .filme-card img,
+    .sem-poster {
+        height: auto;
+
+        aspect-ratio: 2 / 3;
+    }
+
+}
+
+
+@media (max-width: 560px) {
+
+    .catalogo-page header {
+        flex-direction: column;
+
+        align-items: flex-start;
+
+        gap: 12px;
+    }
+
+
+    .catalogo-page header > div:last-child {
+        width: 100%;
+
+        justify-content: space-between;
+    }
+
+
+    .lista-filmes {
+        grid-template-columns: 1fr;
+    }
+
+
+    .catalogo-page main {
+        width: 90%;
+    }
+
+}
+
+
+/* =========================================================
+   RESPONSIVIDADE — LOGIN / CADASTRO
+========================================================= */
+
+@media (max-width: 500px) {
+
+    .auth-page {
+        padding: 15px;
+    }
+
+
+    .auth-card {
+        padding: 28px 22px;
+    }
+
+
+    .auth-title h1 {
+        font-size: 22px;
+    }
+
+
+    .auth-card > h2 {
+        font-size: 20px;
+    }
+
+}
