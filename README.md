@@ -1,160 +1,69 @@
 # Catálogo de Filmes — Tom Hanks
 
-Aplicação desenvolvida para a disciplina **Introdução à Computação em Nuvem (ISW055)**.
+> Projeto desenvolvido para a disciplina **Introdução à Computação em Nuvem (ISW055)**, proposta pelo professor [@siriani](https://github.com/siriani).
 
-**Professor:** [@siriani](https://github.com/siriani)
-**Semestre:** 2026.2
+Aplicação web em **Node.js + Express** que consulta filmes de Tom Hanks diretamente na API do **TMDB** e permite que usuários cadastrados mantenham seus próprios favoritos e comentários.
 
-## Aplicação publicada
-
-https://luana-abrantes-isw055.lapps.studio/
+**Atividade 3 — Serviços desacoplados:** a autenticação foi separada do backend principal e transferida para um microsserviço chamado `auth-service`, responsável por cadastro, login, papéis de usuário e recuperação de senha. O catálogo continua sendo o único ponto de entrada público da aplicação.
 
 ---
 
-# Sobre o projeto
+## Stack
 
-Aplicação web que consulta filmes com **Tom Hanks** por meio da API do **TMDB**.
-
-O sistema possui cadastro e autenticação próprios e permite que cada usuário:
-
-- visualize filmes com pôster, título, ano e sinopse;
-- favorite e desfavorite filmes;
-- adicione comentários;
-- mantenha seus favoritos e comentários após recarregar a aplicação;
-- realize login e logout;
-- solicite recuperação de senha por e-mail;
-- redefina a senha por meio de um link temporário.
-
-Os filmes são obtidos diretamente da API do TMDB e **não são armazenados no banco de dados**.
-
-O MariaDB armazena somente dados relacionados a:
-
-- usuários;
-- favoritos;
-- comentários;
-- tokens de recuperação de senha.
+- **Catálogo:** Node.js + Express + MySQL2
+- **Banco:** MariaDB
+- **Autenticação:** `auth-service` + bcryptjs + JSON Web Token
+- **Papéis:** `usuario` e `admin`
+- **Recuperação de senha:** token aleatório, expiração de 30 minutos e uso único
+- **E-mail:** Nodemailer + Mailtrap
+- **Frontend:** HTML + CSS + JavaScript
+- **Filmes:** TMDB API
+- **Infraestrutura:** Docker + Docker Compose
 
 ---
 
-# Atividade 3 — Microsserviço de autenticação
+## Arquitetura
 
-Nesta atividade, a autenticação foi **desacoplada do backend principal do catálogo** e transferida para um serviço independente chamado:
-
-```text
-auth-service
-```
-
-O projeto passou a possuir dois serviços principais:
-
-- `catalogo`;
-- `auth-service`.
-
-O **catálogo é o único serviço exposto publicamente**.
-
-O `auth-service` não publica sua porta para o computador hospedeiro e é acessado somente pela **rede interna do Docker Compose**.
-
----
-
-# Arquitetura
-
-A arquitetura da aplicação é:
+A aplicação possui dois containers conectados pela mesma rede Docker e apenas um ponto de entrada público:
 
 ```text
-                         INTERNET / USUÁRIO
-                                │
-                                ▼
-                     http://localhost:3000
-                                │
-                                ▼
-                    ┌──────────────────────┐
-                    │       CATÁLOGO       │
-                    │   Node.js + Express  │
-                    │      porta 3000      │
-                    └──────────┬───────────┘
-                               │
-                     Rede interna Docker
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │     AUTH-SERVICE     │
-                    │   Node.js + Express  │
-                    │      porta 3001      │
-                    └──────────┬───────────┘
-                               │
-                    ┌──────────┴──────────┐
-                    ▼                     ▼
-                 MariaDB              Mailtrap
+Navegador
+    │
+    ▼
+┌──────────────────────────┐
+│        CATÁLOGO          │
+│   Node.js + Express      │
+│      porta 3000          │
+│                          │
+│ único ponto público      │
+└────────────┬─────────────┘
+             │
+             │ catalogo-network
+             │ rede interna Docker
+             ▼
+┌──────────────────────────┐
+│      AUTH-SERVICE        │
+│   Node.js + Express      │
+│      porta 3001          │
+│                          │
+│ sem porta publicada      │
+└───────┬──────────┬───────┘
+        │          │
+        ▼          ▼
+     MariaDB    Mailtrap
+
+Catálogo ─────────────────▶ TMDB API
 ```
 
-O navegador acessa somente o catálogo.
+- O `catalogo` é o único serviço com porta publicada para o host.
+- O `auth-service` utiliza somente `expose: "3001"`.
+- Os dois serviços compartilham a rede `catalogo-network`.
+- O catálogo acessa o serviço de autenticação por `http://auth-service:3001`.
+- O navegador nunca acessa diretamente o `auth-service`.
+- O JWT é criado e validado pelo serviço de autenticação.
+- Favoritos e comentários permanecem associados ao usuário autenticado.
 
-O navegador **não acessa diretamente**:
-
-```text
-http://auth-service:3001
-```
-
-A comunicação entre o catálogo e o `auth-service` acontece apenas dentro da rede Docker.
-
----
-
-# Serviços Docker
-
-O projeto utiliza o arquivo:
-
-```text
-docker-compose.yml
-```
-
-para executar os dois serviços.
-
-## Catálogo
-
-O serviço `catalogo` é responsável por:
-
-- servir o frontend;
-- consultar a API do TMDB;
-- gerenciar favoritos;
-- gerenciar comentários;
-- receber as requisições públicas;
-- armazenar o JWT em cookie HttpOnly;
-- encaminhar as operações de autenticação para o `auth-service`.
-
-Porta publicada:
-
-```text
-3000:3000
-```
-
-## Auth Service
-
-O serviço `auth-service` é responsável por:
-
-- cadastro;
-- login;
-- hash de senha;
-- geração de JWT;
-- validação da sessão;
-- papéis de usuário;
-- recuperação de senha;
-- geração de token de redefinição;
-- validação do token;
-- alteração da senha;
-- envio de e-mail.
-
-O serviço utiliza internamente:
-
-```text
-3001/tcp
-```
-
-Porém **não possui uma porta publicada para o host**.
-
----
-
-# Docker Compose
-
-A configuração utilizada possui os dois serviços conectados à mesma rede:
+### Docker Compose
 
 ```yaml
 services:
@@ -201,238 +110,103 @@ networks:
     driver: bridge
 ```
 
-Observe que somente o catálogo possui:
+Somente o catálogo possui:
 
 ```yaml
 ports:
   - "3000:3000"
 ```
 
-O `auth-service` utiliza apenas:
+O `auth-service` possui apenas:
 
 ```yaml
 expose:
   - "3001"
 ```
 
-Portanto, a porta `3001` fica disponível apenas para os containers da rede Docker.
+Portanto, a porta `3001` fica disponível apenas dentro da rede Docker.
 
 ---
 
-# Comunicação entre os serviços
+## Autenticação
 
-O catálogo acessa o serviço de autenticação utilizando o próprio nome do serviço Docker:
-
-```text
-http://auth-service:3001
-```
-
-A variável utilizada é:
-
-```env
-AUTH_SERVICE_URL=http://auth-service:3001
-```
-
-Exemplo do fluxo de login:
+Toda a lógica de autenticação está concentrada no diretório:
 
 ```text
-Usuário
-   │
-   ▼
-POST /api/auth/login
-   │
-   ▼
-Catálogo :3000
-   │
-   ▼
-http://auth-service:3001/auth/login
-   │
-   ▼
-Auth Service
+auth-service/
 ```
 
-O usuário não precisa conhecer nem acessar diretamente a porta interna do serviço de autenticação.
+O microsserviço é responsável por:
 
----
+- cadastro;
+- login;
+- hash e validação de senha;
+- geração e validação do JWT;
+- papéis de usuário;
+- recuperação de senha.
 
-# Autenticação
+As senhas são transformadas em hash utilizando `bcryptjs` antes de serem armazenadas no MariaDB.
 
-Toda a lógica de autenticação está concentrada no `auth-service`.
+Novos usuários recebem automaticamente:
 
-O microsserviço utiliza:
+```text
+role = usuario
+```
 
-- `bcryptjs` para gerar e verificar o hash das senhas;
-- `jsonwebtoken` para gerar e validar JWT.
+O sistema também possui suporte ao papel:
 
-As senhas **não são armazenadas em texto puro**.
+```text
+admin
+```
 
-Durante o cadastro, a senha é transformada em hash antes de ser armazenada no MariaDB.
-
-Após um login válido, o `auth-service` gera um JWT contendo informações do usuário.
-
-Exemplo do conteúdo utilizado:
+Após um login válido, o `auth-service` gera um JWT contendo informações como:
 
 ```json
 {
-  "id": 16,
-  "nome": "Administrador Teste",
-  "email": "admin.auth.20260828@example.com",
-  "role": "admin"
+  "id": 1,
+  "nome": "Usuário",
+  "email": "usuario@email.com",
+  "role": "usuario"
 }
 ```
 
-O catálogo recebe o token e o armazena em um cookie:
+O catálogo recebe esse token e o armazena em um cookie `HttpOnly`.
 
-```text
-HttpOnly
-```
-
-Dessa forma, o JavaScript do frontend não precisa manipular diretamente o JWT.
-
----
-
-# Validação da autenticação
-
-Quando uma rota do catálogo precisa identificar o usuário autenticado, o catálogo encaminha internamente o token para:
+Nas rotas protegidas, o catálogo encaminha o JWT internamente para:
 
 ```text
 GET http://auth-service:3001/auth/validar
 ```
 
-O `auth-service` valida o JWT e retorna os dados do usuário.
-
-Exemplo:
-
-```json
-{
-  "usuario": {
-    "id": 15,
-    "nome": "Teste Docker",
-    "email": "docker.auth.20260828@example.com",
-    "role": "usuario"
-  }
-}
-```
-
-Assim, a responsabilidade de interpretar e validar o JWT permanece no microsserviço de autenticação.
+O serviço valida o token e retorna os dados do usuário autenticado.
 
 ---
 
-# Papéis de usuário
-
-O sistema possui suporte a pelo menos dois papéis:
-
-```text
-usuario
-admin
-```
-
-O papel é armazenado no campo:
-
-```text
-role
-```
-
-da tabela `usuarios`.
-
-Novos usuários são cadastrados por padrão como:
-
-```text
-usuario
-```
-
-A criação pública de contas não permite escolher livremente o papel `admin`.
-
-O papel do usuário é retornado pelo `auth-service` durante:
-
-- login;
-- validação da sessão.
-
-Durante os testes também foi validado um usuário com:
-
-```json
-{
-  "role": "admin"
-}
-```
-
-Não foi necessária a criação de uma interface administrativa para esta atividade.
-
----
-
-# Recuperação de senha
+## Recuperação de senha
 
 O fluxo de recuperação de senha também pertence ao `auth-service`.
 
-Na tela de login existe a opção:
+1. O usuário acessa **Esqueci minha senha**.
+2. Informa o e-mail cadastrado.
+3. O catálogo recebe a solicitação em:
 
 ```text
-Esqueci minha senha
-```
-
-O usuário é direcionado para:
-
-```text
-/esqueci-senha.html
-```
-
-onde informa o e-mail cadastrado.
-
-O fluxo completo é:
-
-```text
-Usuário
-   │
-   ▼
-Tela "Esqueci minha senha"
-   │
-   ▼
 POST /api/auth/esqueci-senha
-   │
-   ▼
-Catálogo
-   │
-   ▼
-Auth Service
-   │
-   ├── verifica o usuário
-   ├── gera token aleatório
-   ├── grava o token no MariaDB
-   └── envia e-mail pelo Mailtrap
-                    │
-                    ▼
-             E-mail recebido
-                    │
-                    ▼
-             Link temporário
-                    │
-                    ▼
-http://localhost:3000/redefinir-senha.html?token=...
 ```
 
-O e-mail nunca direciona o usuário diretamente para o `auth-service`.
+4. O catálogo encaminha a requisição ao `auth-service`.
+5. O serviço gera um token com:
 
-O link retorna para o **catálogo público**.
-
-A página de redefinição envia a nova senha para:
-
-```text
-POST /api/auth/redefinir-senha
+```javascript
+crypto.randomBytes(32).toString('hex')
 ```
 
-O catálogo encaminha essa requisição internamente ao `auth-service`.
+6. O token é armazenado na tabela `reset_tokens`.
+7. Um e-mail com o link de redefinição é enviado pelo Mailtrap.
+8. O usuário acessa o link pelo catálogo e informa uma nova senha.
+9. Após a alteração, o token é marcado como utilizado.
 
----
-
-# Token de recuperação
-
-Os tokens são armazenados na tabela:
-
-```text
-reset_tokens
-```
-
-A tabela possui:
+A tabela `reset_tokens` possui:
 
 ```text
 token
@@ -442,75 +216,15 @@ expira_em
 usado
 ```
 
-O token é criado utilizando:
+Cada token possui validade de **30 minutos** e pode ser utilizado somente uma vez.
 
-```javascript
-crypto.randomBytes(32)
-```
-
-e convertido para hexadecimal.
-
-Isso gera um token criptograficamente aleatório de **32 bytes**.
-
----
-
-# Expiração do token
-
-Cada token de recuperação possui validade de:
-
-```text
-30 minutos
-```
-
-No momento da criação:
-
-```text
-expira_em = criado_em + 30 minutos
-```
-
-Antes de permitir a alteração da senha, o `auth-service` verifica se o token:
+Antes de alterar a senha, o serviço verifica se o token:
 
 - existe;
-- ainda não expirou;
+- não expirou;
 - ainda não foi utilizado.
 
-Se qualquer uma dessas validações falhar, a redefinição da senha é recusada.
-
-Um token expirado retorna uma resposta informando que um novo processo de recuperação deve ser solicitado.
-
----
-
-# Token de uso único
-
-Após a alteração da senha com sucesso, o token utilizado é atualizado para:
-
-```text
-usado = true
-```
-
-Uma nova tentativa de utilizar o mesmo link retorna:
-
-```json
-{
-  "mensagem": "Este link já foi utilizado."
-}
-```
-
-Portanto, um mesmo link não pode ser utilizado duas vezes.
-
----
-
-# Token inválido
-
-Tokens inexistentes também são recusados.
-
-Exemplo:
-
-```text
-HTTP/1.1 400 Bad Request
-```
-
-Resposta:
+Exemplos de recusas:
 
 ```json
 {
@@ -518,231 +232,50 @@ Resposta:
 }
 ```
 
----
+```json
+{
+  "mensagem": "Este link já foi utilizado."
+}
+```
 
-# Envio de e-mail
+```json
+{
+  "mensagem": "Este link expirou. Solicite uma nova recuperação de senha."
+}
+```
 
-## Desenvolvimento
-
-Durante o desenvolvimento foi utilizado:
+A solicitação de recuperação utiliza uma mensagem genérica:
 
 ```text
-Mailtrap Email Testing
+Se o e-mail estiver cadastrado, você receberá um link de recuperação.
 ```
 
-O `auth-service` realiza uma conexão SMTP utilizando o Nodemailer.
-
-As configurações são fornecidas por variáveis de ambiente:
-
-```env
-MAIL_HOST=
-MAIL_PORT=
-MAIL_USER=
-MAIL_PASS=
-MAIL_FROM=
-```
-
-O e-mail enviado contém:
-
-- informação de solicitação de redefinição;
-- link para o catálogo;
-- informação de expiração em 30 minutos;
-- informação de uso único do link.
-
-O envio foi validado utilizando uma caixa de testes real do Mailtrap.
-
-## Produção
-
-Em produção, o mesmo mecanismo pode utilizar um serviço SMTP real, como:
-
-```text
-Brevo
-```
-
-Nesse caso, as variáveis SMTP devem receber as credenciais do provedor de produção.
-
-Credenciais SMTP **não devem ser armazenadas diretamente no código-fonte nem enviadas ao GitHub**.
+Assim, a aplicação não revela se determinado e-mail possui uma conta cadastrada.
 
 ---
 
-# Banco de dados
+## Como rodar localmente
 
-Além das tabelas utilizadas anteriormente, a Atividade 3 adicionou suporte a papéis de usuário e recuperação de senha.
+### 1. Pré-requisitos
 
-## Papel do usuário
+- Node.js 20+
+- npm
+- Docker
+- Docker Compose
+- banco MariaDB/MySQL
+- token da API do TMDB
+- conta no Mailtrap
 
-Foi adicionado à tabela `usuarios`:
+### 2. Clonar o repositório
 
-```sql
-role VARCHAR(20) NOT NULL DEFAULT 'usuario'
+```bash
+git clone https://github.com/Luanaabrantes/catalogo-filmes.git
+cd catalogo-filmes
 ```
 
-## Tokens de recuperação
+### 3. Configurar o catálogo
 
-Foi adicionada a tabela:
-
-```sql
-CREATE TABLE reset_tokens (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    token VARCHAR(128) NOT NULL UNIQUE,
-    usuario_id INT NOT NULL,
-    criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expira_em TIMESTAMP NOT NULL,
-    usado BOOLEAN NOT NULL DEFAULT FALSE,
-
-    CONSTRAINT fk_reset_tokens_usuario
-        FOREIGN KEY (usuario_id)
-        REFERENCES usuarios(id)
-        ON DELETE CASCADE
-);
-```
-
-As alterações necessárias estão documentadas no arquivo:
-
-```text
-database/migracao-atividade3.sql
-```
-
-Esse script permite preparar um banco da Atividade 2 para receber as estruturas utilizadas na Atividade 3.
-
----
-
-# Segregação de usuários
-
-Favoritos e comentários continuam associados ao usuário autenticado por meio do campo:
-
-```text
-usuario_id
-```
-
-Exemplo para favoritos:
-
-```sql
-SELECT tmdb_movie_id
-FROM favoritos
-WHERE usuario_id = ?;
-```
-
-Exemplo para comentários:
-
-```sql
-SELECT id, tmdb_movie_id, texto, criado_em
-FROM comentarios
-WHERE usuario_id = ?;
-```
-
-A exclusão de comentários também considera o proprietário:
-
-```sql
-DELETE FROM comentarios
-WHERE id = ?
-AND usuario_id = ?;
-```
-
-O `usuario_id` não é recebido livremente do frontend.
-
-Ele é obtido a partir da sessão autenticada.
-
-Isso mantém os dados de cada usuário segregados.
-
----
-
-# Integração com a TMDB
-
-Os dados dos filmes continuam sendo consultados diretamente na API do TMDB.
-
-Fluxo:
-
-```text
-GET /search/person?query=Tom+Hanks
-        ↓
-Obtém o person_id
-        ↓
-GET /person/{person_id}/movie_credits
-        ↓
-Obtém os filmes
-        ↓
-https://image.tmdb.org/t/p/w500{poster_path}
-```
-
-Título, ano, sinopse e pôster são consultados em tempo de execução.
-
-Os filmes **não são persistidos no MariaDB**.
-
----
-
-# Estrutura do projeto
-
-```text
-catalogo-filmes/
-│
-├── auth-service/
-│   │
-│   ├── src/
-│   │   ├── auth.js
-│   │   ├── database.js
-│   │   ├── mailer.js
-│   │   ├── recuperacaoSenha.js
-│   │   └── server.js
-│   │
-│   ├── .dockerignore
-│   ├── .env.example
-│   ├── Dockerfile
-│   ├── package.json
-│   └── package-lock.json
-│
-├── database/
-│   └── migracao-atividade3.sql
-│
-├── public/
-│   ├── index.html
-│   ├── login.js
-│   ├── cadastro.html
-│   ├── cadastro.js
-│   ├── catalogo.html
-│   ├── catalogo.js
-│   ├── esqueci-senha.html
-│   ├── esqueci-senha.js
-│   ├── redefinir-senha.html
-│   ├── redefinir-senha.js
-│   └── style.css
-│
-├── src/
-│   ├── server.js
-│   ├── database.js
-│   ├── auth.js
-│   ├── middlewareAuth.js
-│   ├── filmes.js
-│   ├── favoritos.js
-│   └── comentarios.js
-│
-├── .dockerignore
-├── .env.example
-├── .gitignore
-├── docker-compose.yml
-├── Dockerfile
-├── package.json
-├── package-lock.json
-└── README.md
-```
-
----
-
-# Variáveis de ambiente
-
-Credenciais reais não são enviadas ao GitHub.
-
-Os arquivos `.env` estão ignorados pelo Git.
-
-## Catálogo
-
-Arquivo:
-
-```text
-.env
-```
-
-Exemplo:
+Crie `.env` na raiz utilizando `.env.example` como referência:
 
 ```env
 DB_HOST=
@@ -759,21 +292,9 @@ PORT=3000
 NODE_ENV=development
 ```
 
-Ao executar com Docker Compose, `AUTH_SERVICE_URL` é substituído por:
+### 4. Configurar o auth-service
 
-```env
-AUTH_SERVICE_URL=http://auth-service:3001
-```
-
-## Auth Service
-
-Arquivo:
-
-```text
-auth-service/.env
-```
-
-Exemplo:
+Crie `auth-service/.env` utilizando `auth-service/.env.example`:
 
 ```env
 PORT=3001
@@ -795,54 +316,34 @@ MAIL_FROM=no-reply@catalogo-filmes.local
 CATALOGO_URL=http://localhost:3000
 ```
 
-Os arquivos de exemplo podem ser utilizados como referência:
+Os arquivos `.env` possuem dados sensíveis e não são enviados ao GitHub.
+
+### 5. Atualizar o banco
+
+Para um banco utilizado anteriormente na Atividade 2, execute:
 
 ```text
-.env.example
-auth-service/.env.example
+database/migracao-atividade3.sql
 ```
 
-Nenhuma senha de banco, token do TMDB, segredo JWT ou credencial SMTP deve ser publicada no repositório.
+A migração:
 
----
+- adiciona o campo `role` à tabela `usuarios`;
+- cria a tabela `reset_tokens`.
 
-# Executando o projeto
-
-## Pré-requisitos
-
-É necessário possuir:
-
-- Docker;
-- Docker Compose;
-- credenciais do banco MariaDB;
-- token da API do TMDB;
-- credenciais de uma caixa SMTP do Mailtrap.
-
-Configure:
-
-```text
-.env
-```
-
-e:
-
-```text
-auth-service/.env
-```
-
-Depois, na raiz do projeto, execute:
+### 6. Subir os containers
 
 ```bash
 docker compose up -d --build
 ```
 
-Para verificar os containers:
+Verifique:
 
 ```bash
 docker compose ps
 ```
 
-O comportamento esperado é semelhante a:
+O resultado deve ser semelhante a:
 
 ```text
 SERVICE        PORTS
@@ -851,7 +352,7 @@ auth-service   3001/tcp
 catalogo       0.0.0.0:3000->3000/tcp
 ```
 
-Somente o catálogo possui uma porta publicada para o computador hospedeiro.
+Somente o catálogo possui uma porta publicada para o host.
 
 A aplicação pode ser acessada em:
 
@@ -859,146 +360,213 @@ A aplicação pode ser acessada em:
 http://localhost:3000
 ```
 
----
+### 7. Testar o isolamento do auth-service
 
-# Testando o isolamento do auth-service
-
-Uma tentativa de acesso direto pelo host:
+Uma tentativa direta:
 
 ```bash
 curl http://localhost:3001/health
 ```
 
-deve falhar, pois a porta `3001` não está publicada.
+deve falhar.
 
-Por outro lado, o catálogo consegue acessar o serviço através da rede Docker:
+Dentro da rede Docker:
 
 ```bash
 docker compose exec catalogo node -e "fetch('http://auth-service:3001/health').then(r=>r.text()).then(console.log)"
 ```
 
-Resultado esperado:
+deve retornar o status do serviço.
 
-```json
-{
-  "servico": "auth-service",
-  "status": "ok"
-}
-```
-
-Isso demonstra que o `auth-service` está isolado da rede pública e que a comunicação ocorre internamente entre os containers.
-
----
-
-# Validação realizada
-
-Durante os testes da Atividade 3 foram validados:
-
-- execução do catálogo e do `auth-service` em containers separados;
-- catálogo publicado na porta `3000`;
-- `auth-service` sem porta publicada para o host;
-- comunicação interna por `http://auth-service:3001`;
-- cadastro por meio do catálogo;
-- novos cadastros recebendo `role: "usuario"`;
-- login por meio do catálogo;
-- validação da sessão pelo `auth-service`;
-- retorno do papel `usuario`;
-- retorno do papel `admin`;
-- acesso à tela "Esqueci minha senha";
-- solicitação da recuperação pela interface;
-- geração do token de recuperação;
-- envio do e-mail para o Mailtrap;
-- recebimento do link pelo Mailtrap;
-- link retornando para o catálogo público;
-- token configurado com validade de 30 minutos;
-- redefinição da senha pela interface;
-- login funcionando com a nova senha;
-- rejeição de token inválido;
-- rejeição de token já utilizado.
-
----
-
-# Fluxo de recuperação validado
-
-O fluxo testado foi:
+Isso confirma que:
 
 ```text
-Login
-  ↓
-Esqueci minha senha
-  ↓
-Informar e-mail
-  ↓
-Catálogo
-  ↓
-Auth Service
-  ↓
-Token salvo no banco
-  ↓
-E-mail enviado ao Mailtrap
-  ↓
-Link de redefinição
-  ↓
-Nova senha
-  ↓
-Token marcado como usado
-  ↓
-Login com a nova senha
+Host ──X──▶ Auth Service
 ```
 
-Também foi validado que uma nova tentativa de utilizar o mesmo link é recusada.
+mas:
+
+```text
+Catálogo ─────▶ Auth Service
+```
+
+funciona pela rede interna.
 
 ---
 
-# Tecnologias utilizadas
+## Endpoints
 
-- Node.js
-- Express
-- JavaScript
-- HTML
-- CSS
-- MariaDB
-- MySQL2
-- bcryptjs
-- JSON Web Token
-- Nodemailer
-- Mailtrap
-- TMDB API
-- Docker
-- Docker Compose
-- Git
-- GitHub
+### Catálogo — público
 
----
+| Método | Rota | Auth | Descrição |
+|---|---|---|---|
+| POST | `/api/auth/cadastro` | Não | Cadastra usuário |
+| POST | `/api/auth/login` | Não | Realiza login |
+| GET | `/api/auth/me` | Sim | Retorna usuário autenticado |
+| POST | `/api/auth/logout` | Não | Encerra sessão |
+| POST | `/api/auth/esqueci-senha` | Não | Solicita recuperação |
+| POST | `/api/auth/redefinir-senha` | Não | Redefine a senha |
+| GET | `/api/filmes` | Sim | Lista filmes de Tom Hanks |
+| GET | `/api/favoritos` | Sim | Lista favoritos |
+| POST | `/api/favoritos/:movieId` | Sim | Adiciona favorito |
+| DELETE | `/api/favoritos/:movieId` | Sim | Remove favorito |
+| GET | `/api/comentarios` | Sim | Lista comentários |
+| GET | `/api/comentarios/:movieId` | Sim | Comentários de um filme |
+| POST | `/api/comentarios/:movieId` | Sim | Adiciona comentário |
+| DELETE | `/api/comentarios/:id` | Sim | Remove comentário |
 
-# Segurança
+### Auth Service — interno
 
-Foram adotadas algumas medidas de segurança no projeto:
-
-- senhas armazenadas utilizando hash com `bcryptjs`;
-- JWT gerado somente pelo `auth-service`;
-- token armazenado no catálogo em cookie HttpOnly;
-- `auth-service` sem porta publicada no host;
-- segredos fornecidos por variáveis de ambiente;
-- arquivos `.env` ignorados pelo Git;
-- tokens de recuperação aleatórios;
-- expiração de token em 30 minutos;
-- token de recuperação de uso único;
-- mensagem genérica ao solicitar recuperação de senha, evitando indicar se determinado e-mail está cadastrado;
-- isolamento de favoritos e comentários por usuário.
+| Método | Rota | Descrição |
+|---|---|---|
+| POST | `/auth/cadastro` | Cadastra usuário |
+| POST | `/auth/login` | Valida credenciais e gera JWT |
+| GET | `/auth/validar` | Valida o JWT |
+| POST | `/auth/esqueci-senha` | Gera token e envia o e-mail |
+| POST | `/auth/redefinir-senha` | Valida token e altera senha |
+| GET | `/health` | Verifica o serviço |
 
 ---
 
-# Links
+## Estrutura do projeto
 
-**Aplicação:**
-https://luana-abrantes-isw055.lapps.studio/
+```text
+catalogo-filmes/
+│
+├── auth-service/
+│   ├── src/
+│   │   ├── auth.js
+│   │   ├── database.js
+│   │   ├── mailer.js
+│   │   ├── recuperacaoSenha.js
+│   │   └── server.js
+│   ├── .env.example
+│   ├── Dockerfile
+│   └── package.json
+│
+├── database/
+│   └── migracao-atividade3.sql
+│
+├── docs/
+│   └── evidencias/
+│
+├── public/
+│   ├── index.html
+│   ├── cadastro.html
+│   ├── catalogo.html
+│   ├── esqueci-senha.html
+│   ├── redefinir-senha.html
+│   └── ...
+│
+├── src/
+│   ├── auth.js
+│   ├── comentarios.js
+│   ├── database.js
+│   ├── favoritos.js
+│   ├── filmes.js
+│   ├── middlewareAuth.js
+│   └── server.js
+│
+├── .env.example
+├── docker-compose.yml
+├── Dockerfile
+├── package.json
+└── README.md
+```
 
-**Repositório:**
+---
+
+## Notas de segurança / design
+
+- os filmes são consultados diretamente no TMDB e não são armazenados no banco;
+- as senhas são armazenadas utilizando hash com `bcryptjs`;
+- o JWT é gerado e validado pelo `auth-service`;
+- o JWT possui expiração;
+- o token da sessão é armazenado em cookie `HttpOnly`;
+- o `auth-service` não possui porta publicada;
+- os serviços se comunicam pela rede interna Docker;
+- arquivos `.env` não são versionados;
+- novos usuários recebem `role = usuario`;
+- o `usuario_id` é obtido pela autenticação;
+- favoritos e comentários são filtrados pelo usuário autenticado;
+- a recuperação não revela se o e-mail informado está cadastrado;
+- tokens de recuperação são criptograficamente aleatórios;
+- tokens expiram após 30 minutos;
+- cada token pode ser utilizado somente uma vez.
+
+---
+
+## Evidências
+
+Evidências da **Atividade 3 — Serviços desacoplados**, demonstrando o fluxo completo de recuperação e redefinição de senha.
+
+### 1. Tela de login
+
+A tela de login apresenta a opção **Esqueci minha senha**, utilizada para iniciar o processo de recuperação.
+
+![Tela de login](docs/evidencias/tela-login.png)
+
+---
+
+### 2. Tela de recuperação de senha
+
+Ao selecionar **Esqueci minha senha**, o usuário é direcionado para a tela onde informa o e-mail da conta.
+
+![Tela de recuperação de senha](docs/evidencias/recuperar-senha.png)
+
+---
+
+### 3. Envio da solicitação de recuperação
+
+Após informar o e-mail, a aplicação envia a solicitação de recuperação.
+
+![Envio da solicitação de recuperação](docs/evidencias/envio-recuperacao.png)
+
+---
+
+### 4. Solicitação de recuperação confirmada
+
+Após o processamento, a aplicação informa que, caso o e-mail esteja cadastrado, será enviado um link de recuperação.
+
+![Solicitação de recuperação confirmada](docs/evidencias/email-enviado.png)
+
+---
+
+### 5. E-mail recebido no Mailtrap
+
+O `auth-service` gera o token de recuperação e envia o link de redefinição por e-mail utilizando o Mailtrap.
+
+O link possui validade de **30 minutos** e pode ser utilizado apenas uma vez.
+
+![E-mail recebido no Mailtrap](docs/evidencias/email-mailtrap.png)
+
+---
+
+### 6. Tela de redefinição de senha
+
+O link recebido por e-mail direciona o usuário para a tela de redefinição de senha do catálogo.
+
+![Tela de redefinição de senha](docs/evidencias/redefinir-senha.png)
+
+---
+
+### 7. Senha redefinida com sucesso
+
+Após a validação do token, a nova senha é cadastrada com sucesso e o token é marcado como utilizado.
+
+![Senha redefinida com sucesso](docs/evidencias/senha-redefinida.png)
+
+---
+
+### 8. Reutilização do link recusada
+
+Após a utilização do token, uma nova tentativa de redefinir a senha utilizando o mesmo link é recusada.
+
+![Tentativa de reutilização do link recusada](docs/evidencias/link-utilizado.png)
+
+## Repositório
+
 https://github.com/Luanaabrantes/catalogo-filmes
-
-**Professor:**
-https://github.com/siriani
 
 ---
 
