@@ -1,0 +1,72 @@
+services:
+  catalogo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "8216:3000"
+
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+
+      TMDB_TOKEN: ${TMDB_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:3001
+
+      PORT: 3000
+      NODE_ENV: production
+
+    depends_on:
+      - auth-service
+
+    restart: unless-stopped
+
+    networks:
+      - catalogo-network
+
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+
+    expose:
+      - "3001"
+
+    environment:
+      PORT: 3001
+
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASS: ${MAIL_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+
+      CATALOGO_URL: https://luana-abrantes-isw055.lapps.studio
+
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+    restart: unless-stopped
+
+    networks:
+      - catalogo-network
+
+
+networks:
+  catalogo-network:
+    driver: bridge
