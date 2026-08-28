@@ -9,7 +9,7 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Login | Catálogo de Filmes</title>
+    <title>Recuperar senha | Catálogo de Filmes</title>
 
     <link
         rel="stylesheet"
@@ -35,11 +35,17 @@
 
 
         <h2>
-            Login
+            Recuperar senha
         </h2>
 
 
-        <form id="formLogin">
+        <p>
+            Informe o e-mail da sua conta.
+            Você receberá um link para criar uma nova senha.
+        </p>
+
+
+        <form id="formEsqueciSenha">
 
             <div class="form-group">
 
@@ -58,40 +64,14 @@
             </div>
 
 
-            <div class="form-group">
-
-                <label for="senha">
-                    Senha
-                </label>
-
-                <input
-                    type="password"
-                    id="senha"
-                    placeholder="Digite sua senha"
-                    autocomplete="current-password"
-                    required
-                >
-
-            </div>
-
-
             <button
                 type="submit"
                 class="btn-auth"
             >
-                Entrar
+                Enviar link de recuperação
             </button>
 
         </form>
-
-
-        <div class="auth-footer">
-
-            <a href="/esqueci-senha.html">
-                Esqueci minha senha
-            </a>
-
-        </div>
 
 
         <p id="mensagem"></p>
@@ -99,12 +79,8 @@
 
         <div class="auth-footer">
 
-            <span>
-                Não possui uma conta?
-            </span>
-
-            <a href="/cadastro.html">
-                Criar conta
+            <a href="/">
+                Voltar para o login
             </a>
 
         </div>
@@ -112,7 +88,7 @@
     </main>
 
 
-    <script src="login.js"></script>
+    <script src="esqueci-senha.js"></script>
 
 </body>
 
