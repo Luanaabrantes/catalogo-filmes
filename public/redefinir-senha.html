@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Redefinir senha | Catálogo de Filmes</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+</head>
+
+<body class="auth-page">
+
+    <main class="auth-card">
+
+        <div class="auth-title">
+
+            <h1>
+                Catálogo de Filmes
+            </h1>
+
+            <p>
+                Filmes com Tom Hanks
+            </p>
+
+        </div>
+
+
+        <h2>
+            Redefinir senha
+        </h2>
+
+
+        <form id="formRedefinirSenha">
+
+            <div class="form-group">
+
+                <label for="senha">
+                    Nova senha
+                </label>
+
+                <input
+                    type="password"
+                    id="senha"
+                    placeholder="Digite sua nova senha"
+                    autocomplete="new-password"
+                    required
+                >
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label for="confirmarSenha">
+                    Confirmar nova senha
+                </label>
+
+                <input
+                    type="password"
+                    id="confirmarSenha"
+                    placeholder="Digite novamente a nova senha"
+                    autocomplete="new-password"
+                    required
+                >
+
+            </div>
+
+
+            <button
+                type="submit"
+                class="btn-auth"
+            >
+                Alterar senha
+            </button>
+
+        </form>
+
+
+        <p id="mensagem"></p>
+
+
+        <div class="auth-footer">
+
+            <a href="/">
+                Voltar para o login
+            </a>
+
+        </div>
+
+    </main>
+
+
+    <script src="redefinir-senha.js"></script>
+
+</body>
+
+</html>

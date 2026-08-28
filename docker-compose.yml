@@ -1,0 +1,42 @@
+services:
+  catalogo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "3000:3000"
+
+    env_file:
+      - .env
+
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:3001
+
+    depends_on:
+      - auth-service
+
+    networks:
+      - catalogo-network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+
+    env_file:
+      - ./auth-service/.env
+
+    expose:
+      - "3001"
+
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+    networks:
+      - catalogo-network
+
+networks:
+  catalogo-network:
+    driver: bridge
