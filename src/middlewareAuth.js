@@ -1,6 +1,4 @@
-const jwt = require('jsonwebtoken');
-
-function verificarAutenticacao(req, res, next) {
+async function verificarAutenticacao(req, res, next) {
     const token = req.cookies.token;
 
     if (!token) {
@@ -10,18 +8,39 @@ function verificarAutenticacao(req, res, next) {
     }
 
     try {
-        const usuario = jwt.verify(
-            token,
-            process.env.JWT_SECRET
+        const resposta = await fetch(
+            `${process.env.AUTH_SERVICE_URL}/auth/validar`,
+            {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            }
         );
 
-        req.usuario = usuario;
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+            return res.status(401).json({
+                mensagem:
+                    dados.mensagem ||
+                    'Sessão inválida ou expirada.'
+            });
+        }
+
+        req.usuario = dados.usuario;
 
         next();
 
     } catch (erro) {
-        return res.status(401).json({
-            mensagem: 'Sessão inválida ou expirada.'
+        console.error(
+            'Erro ao consultar auth-service:',
+            erro
+        );
+
+        return res.status(503).json({
+            mensagem:
+                'Serviço de autenticação indisponível.'
         });
     }
 }

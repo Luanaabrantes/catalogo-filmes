@@ -30,7 +30,8 @@ router.post('/cadastro', async (req, res) => {
         }
 
         const nomeNormalizado = nome.trim();
-        const emailNormalizado = email.trim().toLowerCase();
+        const emailNormalizado =
+            email.trim().toLowerCase();
 
         const [usuarios] = await db.execute(
             'SELECT id FROM usuarios WHERE email = ?',
@@ -43,11 +44,19 @@ router.post('/cadastro', async (req, res) => {
             });
         }
 
-        const senhaHash = await bcrypt.hash(senha, 10);
+        const senhaHash = await bcrypt.hash(
+            senha,
+            10
+        );
 
         const [resultado] = await db.execute(
             `INSERT INTO usuarios
-                (nome, email, senha_hash, role)
+                (
+                    nome,
+                    email,
+                    senha_hash,
+                    role
+                )
              VALUES (?, ?, ?, ?)`,
             [
                 nomeNormalizado,
@@ -57,7 +66,7 @@ router.post('/cadastro', async (req, res) => {
             ]
         );
 
-        res.status(201).json({
+        return res.status(201).json({
             mensagem: 'Usuário cadastrado com sucesso!',
             usuario: {
                 id: resultado.insertId,
@@ -68,9 +77,12 @@ router.post('/cadastro', async (req, res) => {
         });
 
     } catch (erro) {
-        console.error('Erro ao cadastrar usuário:', erro);
+        console.error(
+            'Erro ao cadastrar usuário:',
+            erro
+        );
 
-        res.status(500).json({
+        return res.status(500).json({
             mensagem: 'Erro interno do servidor.'
         });
     }
@@ -91,7 +103,8 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        const emailNormalizado = email.trim().toLowerCase();
+        const emailNormalizado =
+            email.trim().toLowerCase();
 
         const [usuarios] = await db.execute(
             `SELECT
@@ -113,10 +126,11 @@ router.post('/login', async (req, res) => {
 
         const usuario = usuarios[0];
 
-        const senhaCorreta = await bcrypt.compare(
-            senha,
-            usuario.senha_hash
-        );
+        const senhaCorreta =
+            await bcrypt.compare(
+                senha,
+                usuario.senha_hash
+            );
 
         if (!senhaCorreta) {
             return res.status(401).json({
@@ -137,7 +151,7 @@ router.post('/login', async (req, res) => {
             }
         );
 
-        res.json({
+        return res.json({
             mensagem: 'Login realizado com sucesso!',
             token,
             usuario: {
@@ -149,10 +163,59 @@ router.post('/login', async (req, res) => {
         });
 
     } catch (erro) {
-        console.error('Erro no login:', erro);
+        console.error(
+            'Erro no login:',
+            erro
+        );
 
-        res.status(500).json({
+        return res.status(500).json({
             mensagem: 'Erro interno do servidor.'
+        });
+    }
+});
+
+router.get('/validar', (req, res) => {
+    const authorization =
+        req.headers.authorization;
+
+    if (
+        typeof authorization !== 'string' ||
+        !authorization.startsWith('Bearer ')
+    ) {
+        return res.status(401).json({
+            mensagem: 'Token não informado.'
+        });
+    }
+
+    const token =
+        authorization
+            .substring('Bearer '.length)
+            .trim();
+
+    if (!token) {
+        return res.status(401).json({
+            mensagem: 'Token não informado.'
+        });
+    }
+
+    try {
+        const usuario = jwt.verify(
+            token,
+            process.env.JWT_SECRET
+        );
+
+        return res.json({
+            usuario: {
+                id: usuario.id,
+                nome: usuario.nome,
+                email: usuario.email,
+                role: usuario.role
+            }
+        });
+
+    } catch (erro) {
+        return res.status(401).json({
+            mensagem: 'Sessão inválida ou expirada.'
         });
     }
 });
