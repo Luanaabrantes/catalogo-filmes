@@ -70,3 +70,6 @@ services:
 networks:
   catalogo-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.0.0/24
