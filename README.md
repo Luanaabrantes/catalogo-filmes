@@ -950,6 +950,138 @@ Também foi validado que uma nova tentativa de utilizar o mesmo link é recusada
 
 ---
 
+# Atividade 4 — Controle de acesso por papel (RBAC)
+
+## Objetivo
+
+A Atividade 4 adiciona **autorização baseada em papéis** (*Role-Based Access Control — RBAC*) ao catálogo. O objetivo é permitir que uma ação protegida considere não apenas se a pessoa está autenticada, mas também o papel atual associado à sua conta.
+
+Nesta etapa, o RBAC foi aplicado à exclusão de comentários, preservando o isolamento dos dados dos usuários e permitindo uma ação administrativa controlada.
+
+## Autenticação e autorização
+
+Autenticação e autorização possuem responsabilidades diferentes:
+
+- **autenticação** confirma a identidade do usuário por meio do JWT;
+- **autorização** decide se o usuário autenticado pode executar determinada ação.
+
+Um token válido comprova uma sessão autenticada, mas não concede automaticamente permissão para todas as operações.
+
+## Papéis e permissões
+
+O sistema utiliza dois papéis armazenados no campo `role` da tabela `usuarios`.
+
+O papel `usuario` pode:
+
+- visualizar filmes;
+- favoritar e desfavoritar;
+- criar comentários;
+- visualizar seus comentários;
+- excluir apenas os próprios comentários.
+
+O papel `admin`:
+
+- possui todas as permissões de `usuario`;
+- pode excluir comentários de qualquer usuário para moderação.
+
+Novos cadastros continuam recebendo o papel `usuario` por padrão. O papel `admin` não pode ser escolhido pelo cliente durante o cadastro.
+
+## Regra de exclusão de comentários
+
+Na rota:
+
+```text
+DELETE /api/comentarios/:id
+```
+
+o catálogo executa o seguinte fluxo:
+
+1. valida o identificador recebido;
+2. busca o comentário no banco pelo `id`;
+3. retorna `404` quando o comentário não existe;
+4. verifica se o usuário autenticado é o proprietário do comentário;
+5. verifica se o papel atual do usuário é `admin`;
+6. permite a exclusão quando o usuário é o proprietário ou administrador;
+7. retorna `403` quando um usuário comum tenta excluir um comentário de outra pessoa.
+
+Os principais resultados HTTP são:
+
+| Status | Situação |
+|---:|---|
+| `200 OK` | Exclusão autorizada e concluída |
+| `401 Unauthorized` | Requisição sem autenticação ou com sessão inválida |
+| `403 Forbidden` | Usuário autenticado, mas sem permissão para excluir o comentário |
+
+Assim, `401` indica ausência ou falha de autenticação, enquanto `403` indica que a identidade foi reconhecida, mas a operação não foi autorizada.
+
+## Papel atual e fonte confiável
+
+O sistema **não confia em um papel enviado pelo cliente** em corpo, parâmetro ou cabeçalho da requisição. Também não utiliza o `role` gravado no JWT como fonte atual da autorização.
+
+Depois de validar a assinatura e a validade do JWT, o `auth-service` utiliza somente o `id` do usuário para consultar a tabela `usuarios` e obter os valores atuais de:
+
+- `id`;
+- `nome`;
+- `email`;
+- `role`.
+
+Se o usuário não existir ou o token não contiver um identificador válido, a validação retorna `401`. Mudanças de papel feitas no banco passam a valer nas requisições seguintes, sem exigir a emissão de um novo token.
+
+## Padrão A utilizado
+
+O projeto utiliza atualmente o **Padrão A**, no qual a validação da sessão e a recuperação do papel atual ficam centralizadas no `auth-service`:
+
+```text
+Navegador
+   │ cookie HttpOnly com JWT
+   ▼
+Catálogo
+   │ encaminha o token
+   ▼
+Auth Service
+   │ valida o JWT e consulta o usuário no banco
+   ▼
+Catálogo recebe id, nome, email e role atuais
+   │
+   ▼
+Rota aplica a regra de autorização
+```
+
+O middleware do catálogo preenche `req.usuario` com os dados retornados pelo `auth-service`. Com isso, as rotas do catálogo não precisam interpretar o JWT diretamente e aplicam a autorização usando o papel atual confirmado pelo serviço responsável pela autenticação.
+
+O middleware também preserva o status devolvido pelo `auth-service`. Respostas `401`, `403` ou `500` não são convertidas indiscriminadamente em erro de autenticação.
+
+## Comparação com o Padrão B
+
+Em um possível **Padrão B**, o papel e as permissões viriam nas *claims* do JWT, permitindo que o serviço tomasse a decisão sem consultar o `auth-service` a cada requisição. Porém, mudanças de papel só seriam refletidas após a renovação ou expiração do token.
+
+O Padrão A foi mantido nesta atividade porque centraliza a validação e permite que mudanças de papel tenham efeito imediato. Como contrapartida, cada rota autenticada depende da disponibilidade do `auth-service` e da consulta ao banco.
+
+## Resultados reais dos testes
+
+Os testes foram executados localmente com os serviços `catalogo` e `auth-service` ativos pelo Docker Compose. Foram utilizados dois usuários de teste, inicialmente confirmados no banco com o papel `usuario`, e foi criado um comentário para cada um.
+
+Os resultados observados foram:
+
+| Teste | Resultado |
+|---|---:|
+| Usuário com papel `usuario` tentou excluir o comentário de outro usuário | `403 Forbidden` |
+| Exclusão de comentário sem autenticação | `401 Unauthorized` |
+| Um dos usuários foi promovido para `admin` diretamente no banco | Papel atualizado com sucesso |
+| `GET /api/auth/me` com o mesmo cookie emitido antes da promoção | `200 OK` e `role: "admin"` |
+| Usuário com papel `admin` excluiu o comentário de outro usuário | `200 OK` |
+| Consulta final pelo comentário excluído | Nenhum registro encontrado |
+
+O teste com o mesmo cookie confirmou que a autorização utiliza o papel atual do banco, e não o papel antigo presente no JWT.
+
+## Evoluções futuras
+
+Como evolução, o projeto pode registrar uma **trilha de auditoria** contendo usuário, ação, recurso afetado, data, resultado e contexto da operação. Isso permitiria rastrear, por exemplo, exclusões administrativas de comentários.
+
+O modelo atual com dois papéis e uma regra direta é suficiente para o escopo da atividade. Caso o número de papéis e operações aumente, poderá ser criada uma estrutura formal com tabelas de permissões, papéis e relacionamentos entre eles, sem depender de verificações fixas espalhadas pelo código.
+
+---
+
 # Tecnologias utilizadas
 
 - Node.js
