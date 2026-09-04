@@ -1110,11 +1110,12 @@ Foram adotadas algumas medidas de segurança no projeto:
 - senhas armazenadas utilizando hash com `bcryptjs`;
 - JWT gerado somente pelo `auth-service`;
 - token armazenado no catálogo em cookie HttpOnly;
+- autorização validada no backend com base no papel atual do usuário;
 - `auth-service` sem porta publicada no host;
 - segredos fornecidos por variáveis de ambiente;
 - arquivos `.env` ignorados pelo Git;
 - tokens de recuperação aleatórios;
-- expiração de token em 30 minutos;
+- token de recuperação de senha com expiração de 30 minutos;
 - token de recuperação de uso único;
 - mensagem genérica ao solicitar recuperação de senha, evitando indicar se determinado e-mail está cadastrado;
 - isolamento de favoritos e comentários por usuário.
