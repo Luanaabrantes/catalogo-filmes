@@ -173,16 +173,43 @@ router.delete('/:id', verificarAutenticacao, async (req, res) => {
             });
         }
 
+        const [comentarios] = await db.execute(
+            `
+            SELECT
+                id,
+                usuario_id
+            FROM comentarios
+            WHERE id = ?
+            `,
+            [comentarioId]
+        );
+
+        if (comentarios.length === 0) {
+            return res.status(404).json({
+                mensagem: 'Comentário não encontrado.'
+            });
+        }
+
+        const comentario = comentarios[0];
+
+        const usuarioEhDono =
+            comentario.usuario_id === req.usuario.id;
+
+        const usuarioEhAdmin =
+            req.usuario.role === 'admin';
+
+        if (!usuarioEhDono && !usuarioEhAdmin) {
+            return res.status(403).json({
+                mensagem: 'Você não tem permissão para excluir este comentário.'
+            });
+        }
+
         const [resultado] = await db.execute(
             `
             DELETE FROM comentarios
             WHERE id = ?
-              AND usuario_id = ?
             `,
-            [
-                comentarioId,
-                req.usuario.id
-            ]
+            [comentarioId]
         );
 
         if (resultado.affectedRows === 0) {
