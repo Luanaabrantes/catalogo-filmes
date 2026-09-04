@@ -174,7 +174,7 @@ router.post('/login', async (req, res) => {
     }
 });
 
-router.get('/validar', (req, res) => {
+router.get('/validar', async (req, res) => {
     const authorization =
         req.headers.authorization;
 
@@ -198,11 +198,48 @@ router.get('/validar', (req, res) => {
         });
     }
 
+    let dadosToken;
+
     try {
-        const usuario = jwt.verify(
+        dadosToken = jwt.verify(
             token,
             process.env.JWT_SECRET
         );
+
+    } catch (erro) {
+        return res.status(401).json({
+            mensagem: 'Sessão inválida ou expirada.'
+        });
+    }
+
+    if (
+        !Number.isInteger(dadosToken.id) ||
+        dadosToken.id <= 0
+    ) {
+        return res.status(401).json({
+            mensagem: 'Token com usuário inválido.'
+        });
+    }
+
+    try {
+        const [usuarios] = await db.execute(
+            `SELECT
+                id,
+                nome,
+                email,
+                role
+             FROM usuarios
+             WHERE id = ?`,
+            [dadosToken.id]
+        );
+
+        if (usuarios.length === 0) {
+            return res.status(401).json({
+                mensagem: 'Usuário não encontrado.'
+            });
+        }
+
+        const usuario = usuarios[0];
 
         return res.json({
             usuario: {
@@ -214,8 +251,13 @@ router.get('/validar', (req, res) => {
         });
 
     } catch (erro) {
-        return res.status(401).json({
-            mensagem: 'Sessão inválida ou expirada.'
+        console.error(
+            'Erro ao validar usuário:',
+            erro
+        );
+
+        return res.status(500).json({
+            mensagem: 'Erro interno do servidor.'
         });
     }
 });
