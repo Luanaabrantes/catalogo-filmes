@@ -21,7 +21,7 @@ async function verificarAutenticacao(req, res, next) {
         const dados = await resposta.json();
 
         if (!resposta.ok) {
-            return res.status(401).json({
+            return res.status(resposta.status).json({
                 mensagem:
                     dados.mensagem ||
                     'Sessão inválida ou expirada.'
