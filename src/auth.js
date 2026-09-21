@@ -1,4 +1,5 @@
 const express = require('express');
+const registrarEventoAuditoria = require('./auditoria');
 
 const verificarAutenticacao = require('./middlewareAuth');
 
@@ -103,7 +104,13 @@ router.get(
     }
 );
 
-router.post('/logout', (req, res) => {
+router.post('/logout', verificarAutenticacao, async (req, res) => {
+    await registrarEventoAuditoria({
+        usuarioId: req.usuario.id,
+        acao: 'LOGOUT',
+        ip: req.ip
+    });
+
     res.clearCookie('token', {
         httpOnly: true,
         sameSite: 'lax',

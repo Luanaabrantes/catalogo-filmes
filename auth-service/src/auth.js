@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const db = require('./database');
+const registrarEventoAuditoria = require('./auditoria');
 
 const router = express.Router();
 
@@ -150,6 +151,12 @@ router.post('/login', async (req, res) => {
                 expiresIn: '8h'
             }
         );
+
+        await registrarEventoAuditoria({
+            usuarioId: usuario.id,
+            acao: 'LOGIN',
+            ip: req.ip
+        });
 
         return res.json({
             mensagem: 'Login realizado com sucesso!',
