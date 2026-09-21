@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('./database');
+const registrarEventoAuditoria = require('./auditoria');
 const verificarAutenticacao = require('./middlewareAuth');
 
 const router = express.Router();
@@ -135,6 +136,13 @@ router.post('/:movieId', verificarAutenticacao, async (req, res) => {
             ]
         );
 
+        await registrarEventoAuditoria({
+            usuarioId: req.usuario.id,
+            acao: 'COMENTARIO_CRIADO',
+            ip: req.ip,
+            detalhes: { comentario_id: resultado.insertId, tmdb_movie_id: movieId }
+        });
+
         res.status(201).json({
             mensagem: 'Comentário salvo com sucesso!',
             comentario: {
@@ -217,6 +225,17 @@ router.delete('/:id', verificarAutenticacao, async (req, res) => {
                 mensagem: 'Comentário não encontrado.'
             });
         }
+
+        await registrarEventoAuditoria({
+            usuarioId: req.usuario.id,
+            acao: 'COMENTARIO_APAGADO',
+            ip: req.ip,
+            detalhes: {
+                comentario_id: comentarioId,
+                proprietario_id: comentario.usuario_id,
+                moderacao: usuarioEhAdmin && !usuarioEhDono
+            }
+        });
 
         res.json({
             mensagem: 'Comentário removido com sucesso!'

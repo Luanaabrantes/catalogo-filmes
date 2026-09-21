@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('./database');
+const registrarEventoAuditoria = require('./auditoria');
 const verificarAutenticacao = require('./middlewareAuth');
 
 const router = express.Router();
@@ -66,6 +67,13 @@ router.post('/:movieId', verificarAutenticacao, async (req, res) => {
             ]
         );
 
+        await registrarEventoAuditoria({
+            usuarioId: req.usuario.id,
+            acao: 'FILME_FAVORITADO',
+            ip: req.ip,
+            detalhes: { tmdb_movie_id: movieId }
+        });
+
         res.status(201).json({
             mensagem: 'Filme adicionado aos favoritos!'
         });
@@ -119,6 +127,13 @@ router.delete('/:movieId', verificarAutenticacao, async (req, res) => {
                 mensagem: 'Favorito não encontrado.'
             });
         }
+
+        await registrarEventoAuditoria({
+            usuarioId: req.usuario.id,
+            acao: 'FILME_DESFAVORITADO',
+            ip: req.ip,
+            detalhes: { tmdb_movie_id: movieId }
+        });
 
         res.json({
             mensagem: 'Favorito removido com sucesso!'
