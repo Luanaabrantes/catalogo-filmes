@@ -207,6 +207,18 @@ router.delete('/:id', verificarAutenticacao, async (req, res) => {
             req.usuario.role === 'admin';
 
         if (!usuarioEhDono && !usuarioEhAdmin) {
+            await registrarEventoAuditoria({
+                usuarioId: req.usuario.id,
+                acao: 'ACAO_NEGADA',
+                ip: req.ip,
+                detalhes: {
+                    recurso: 'EXCLUSAO_COMENTARIO',
+                    motivo: 'sem_permissao',
+                    comentario_id: comentarioId,
+                    proprietario_id: comentario.usuario_id
+                }
+            });
+
             return res.status(403).json({
                 mensagem: 'Você não tem permissão para excluir este comentário.'
             });
