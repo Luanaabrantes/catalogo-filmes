@@ -6,6 +6,8 @@ const redis = require('./redis');
 const app = express();
 const PORT = process.env.PORT || 3002;
 
+app.use('/eventos', require('./eventos'));
+
 app.get('/health', async (req, res) => {
     let timeout;
 
