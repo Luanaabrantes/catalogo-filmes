@@ -1,0 +1,13 @@
+{
+  "name": "log-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Infraestrutura de auditoria do catálogo de filmes",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}
