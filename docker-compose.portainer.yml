@@ -1,0 +1,119 @@
+services:
+  catalogo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "8216:3000"
+
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+
+      TMDB_TOKEN: ${TMDB_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:3001
+      LOG_SERVICE_URL: http://log-service:3002
+
+      PORT: 3000
+      NODE_ENV: production
+
+    depends_on:
+      - auth-service
+
+    restart: unless-stopped
+
+    networks:
+      - catalogo-network
+
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+
+    expose:
+      - "3001"
+
+    environment:
+      PORT: 3001
+      LOG_SERVICE_URL: http://log-service:3002
+
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASS: ${MAIL_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+
+      CATALOGO_URL: https://luana-abrantes-isw055.lapps.studio
+
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+    restart: unless-stopped
+
+    networks:
+      - catalogo-network
+
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - audit-redis-data:/data
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - catalogo-network
+
+  log-service:
+    build:
+      context: ./log-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 3002
+      REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:3001
+    expose:
+      - "3002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health', {signal: AbortSignal.timeout(2000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - catalogo-network
+
+
+networks:
+  catalogo-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.88.0.0/24
+
+volumes:
+  audit-redis-data:
