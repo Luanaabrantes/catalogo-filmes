@@ -1,7 +1,37 @@
 const express = require('express');
 const { registrarEvento, EventoInvalido } = require('./evento');
 
+const verificarAutenticacao = require('./middlewareAuth');
+const consultarEventos = require('./consulta');
+
 const router = express.Router();
+
+router.get('/', verificarAutenticacao, async (req, res) => {
+    if (req.usuario.role !== 'admin') {
+        try {
+            await registrarEvento({
+                usuario_id: req.usuario.id,
+                acao: 'ACAO_NEGADA',
+                ip: req.ip,
+                detalhes: { recurso: 'CONSULTA_LOGS_INTERNA', motivo: 'role_insuficiente' }
+            });
+        } catch {
+            console.error('Falha ao registrar acesso negado à consulta interna.');
+        }
+        return res.status(403).json({ mensagem: 'Acesso permitido somente a administradores.' });
+    }
+    const valor = req.query.limit;
+    if (valor !== undefined && (typeof valor !== 'string' || !/^[1-9]\d*$/.test(valor) || Number(valor) > 100)) {
+        return res.status(400).json({ mensagem: 'limit deve ser um inteiro entre 1 e 100.' });
+    }
+    try {
+        const eventos = await consultarEventos(valor === undefined ? 50 : Number(valor));
+        res.json({ quantidade: eventos.length, eventos });
+    } catch {
+        console.error('Falha ao consultar eventos no Redis.');
+        res.status(503).json({ mensagem: 'Serviço de auditoria temporariamente indisponível.' });
+    }
+});
 
 router.post('/', express.json({ limit: '32kb' }), async (req, res) => {
     try {

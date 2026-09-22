@@ -61,8 +61,8 @@ const { createClient } = require('redis');
         assert.equal(registro.message.timestamp, '2026-09-21T22:00:00.000Z');
         assert.equal(registro.message.detalhes, undefined);
         console.log('201 timestamp informado normalizado e detalhes opcionais');
-        assert.equal((await fetch(url)).status, 404);
-        console.log('404 GET /eventos não implementado');
+        assert.equal((await fetch(url)).status, 401);
+        console.log('401 GET /eventos sem autenticação');
     } finally {
         await redis.close();
     }

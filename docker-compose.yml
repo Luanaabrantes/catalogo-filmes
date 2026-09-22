@@ -63,6 +63,7 @@ services:
     environment:
       PORT: 3002
       REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:3001
     expose:
       - "3002"
     depends_on:
