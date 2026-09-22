@@ -12,6 +12,7 @@ const authRoutes = require('./auth');
 const filmesRoutes = require('./filmes');
 const favoritosRoutes = require('./favoritos');
 const comentariosRoutes = require('./comentarios');
+const logsRoutes = require('./logs');
 
 
 // ========================================
@@ -75,6 +76,8 @@ app.use(
     '/api/comentarios',
     comentariosRoutes
 );
+
+app.use('/api/logs', logsRoutes);
 
 
 // ========================================
