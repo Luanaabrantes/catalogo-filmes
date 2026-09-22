@@ -1082,6 +1082,408 @@ O modelo atual com dois papéis e uma regra direta é suficiente para o escopo d
 
 ---
 
+# Atividade 5 — Logs e auditoria
+
+Esta atividade continua o RBAC da Atividade 4 e acrescenta rastreabilidade: quem realizou uma ação, qual operação ocorreu, quando aconteceu e quais tentativas foram recusadas por falta de permissão. As seções anteriores descrevem as etapas históricas; a arquitetura com quatro containers apresentada abaixo corresponde à Atividade 5.
+
+## Log de aplicação e log de auditoria
+
+Logs de aplicação ajudam a investigar erros, exceções, debug e problemas técnicos. Neste projeto, avisos de indisponibilidade são enviados ao console dos serviços.
+
+Logs de auditoria registram ações relevantes dos usuários: entrar, sair, favoritar, comentar, moderar e tentar acessar uma operação proibida. Esses eventos são centralizados no `log-service` e armazenados no Redis, sem arquivos de auditoria espalhados pelo catálogo e pela autenticação.
+
+## Arquitetura atual
+
+```text
+                    USUÁRIO / NAVEGADOR
+                            │
+                            ▼
+                     CATÁLOGO :3000
+                     Node.js + Express
+                     /               \
+                    ▼                 ▼
+          AUTH-SERVICE :3001     LOG-SERVICE :3002
+          Node.js + Express     Node.js + Express
+                 │                    │
+                 ▼                    ▼
+              MariaDB             REDIS :6379
+                               Stream auditoria
+```
+
+Os quatro containers usam a rede `catalogo-network`. Somente o catálogo publica `3000:3000` no host. As portas 3001, 3002 e 6379 permanecem internas. O MariaDB é externo ao Compose: tanto catálogo quanto auth-service acessam os dados de negócio nele. Além das ligações resumidas no diagrama, o auth-service envia eventos ao log-service, e o log-service consulta o auth-service para autorizar a leitura.
+
+| Serviço | Responsabilidades | Porta |
+|---|---|---|
+| `catalogo` | Frontend, TMDB, favoritos, comentários, API pública, cookie HttpOnly e `/api/logs` | `3000:3000`, publicada |
+| `auth-service` | Login, JWT, validação de sessão, consulta do papel atual e recuperação de senha | `3001`, interna |
+| `log-service` | Receber, validar, gravar e consultar eventos; proteger a leitura para admin | `3002`, interna |
+| `redis` | Armazenar os eventos no Redis Stream | `6379`, interna |
+
+O log-service possui seu próprio Dockerfile e roda em container separado. Redis é iniciado pelo Docker, sem instalação manual na máquina.
+
+## Docker Compose da Atividade 5
+
+Conteúdo do `docker-compose.yml` utilizado nesta etapa:
+
+```yaml
+services:
+  catalogo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "3000:3000"
+
+    env_file:
+      - .env
+
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:3001
+      LOG_SERVICE_URL: http://log-service:3002
+
+    depends_on:
+      - auth-service
+
+    networks:
+      - catalogo-network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+
+    env_file:
+      - ./auth-service/.env
+
+    environment:
+      LOG_SERVICE_URL: http://log-service:3002
+
+    expose:
+      - "3001"
+
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+    networks:
+      - catalogo-network
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - audit-redis-data:/data
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - catalogo-network
+
+  log-service:
+    build:
+      context: ./log-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 3002
+      REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:3001
+    expose:
+      - "3002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health', {signal: AbortSignal.timeout(2000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - catalogo-network
+
+volumes:
+  audit-redis-data:
+
+networks:
+  catalogo-network:
+    driver: bridge
+```
+
+O Compose fornece `LOG_SERVICE_URL=http://log-service:3002` ao catálogo e ao auth-service. O log-service recebe `REDIS_URL=redis://redis:6379` e `AUTH_SERVICE_URL=http://auth-service:3001`. Ele não recebe o `JWT_SECRET`: a validação de JWT permanece no auth-service.
+
+## Redis Streams e persistência
+
+A auditoria tem muitas escritas, consultas ocasionais e uma sequência temporal de eventos. Redis Streams atende esse padrão e separa a trilha de auditoria do modelo relacional dos dados de negócio. MariaDB também poderia armazenar logs; a escolha de Redis acompanha a arquitetura proposta para esta atividade.
+
+O Stream chama-se `auditoria`. A gravação utiliza `XADD`, deixando o próprio Redis gerar o ID com `*`. A leitura dos eventos mais recentes utiliza `XREVRANGE`:
+
+```text
+XADD auditoria * ...
+XREVRANGE auditoria + - COUNT 50
+```
+
+No código Node.js, a biblioteca `redis` executa essas operações por `xAdd` e `xRevRange`. Não são utilizadas listas Redis para auditoria.
+
+O Redis utiliza **AOF — Append Only File**, habilitado por `appendonly yes`, e o volume Docker `audit-redis-data`, montado em `/data`. Assim, os dados podem sobreviver à recriação do container quando o volume é preservado. Remover o volume também remove essa persistência; AOF não representa garantia absoluta contra toda forma de perda de dados.
+
+## Estrutura dos eventos
+
+Exemplo real da demonstração, no formato devolvido pela consulta:
+
+```json
+{
+  "id": "1790048607850-0",
+  "usuario_id": "32",
+  "acao": "FILME_FAVORITADO",
+  "timestamp": "2026-09-22T03:43:27.850Z",
+  "ip": "::ffff:172.24.0.2",
+  "detalhes": {
+    "tmdb_movie_id": 13
+  }
+}
+```
+
+- `id`: identificador gerado pelo Redis Stream, preservado na resposta.
+- `usuario_id`: usuário responsável, armazenado como string; nas rotas de negócio vem da sessão validada.
+- `acao`: nome não vazio da operação.
+- `timestamp`: data/hora ISO 8601 normalizada para UTC; se ausente na gravação, o log-service gera o valor.
+- `ip`: origem quando disponível. Pode ser o endereço de um container intermediário; não há confiança indiscriminada em headers de IP enviados pelo cliente.
+- `detalhes`: contexto opcional da ação, serializado com `JSON.stringify()` no Stream e desserializado na consulta. Valores antigos inválidos são devolvidos como `{}`, sem interromper toda a leitura.
+
+## Eventos implementados
+
+| Evento | Quando é registrado |
+|---|---|
+| `LOGIN` | Credenciais confirmadas pelo auth-service e autenticação gerada |
+| `LOGOUT` | Sessão identificada no catálogo antes de limpar o cookie |
+| `FILME_FAVORITADO` | Após o INSERT do favorito; inclui `tmdb_movie_id` |
+| `FILME_DESFAVORITADO` | Após o DELETE realmente remover o favorito |
+| `COMENTARIO_CRIADO` | Após o INSERT; inclui `comentario_id` real e `tmdb_movie_id` |
+| `COMENTARIO_APAGADO` | Após exclusão autorizada; inclui comentário, proprietário e indicação de moderação |
+| `ACAO_NEGADA` | Usuário autenticado tenta uma operação sem permissão |
+
+Login inválido, erro de validação, favorito duplicado e recurso inexistente não geram eventos de sucesso. O texto completo dos comentários não é enviado à auditoria.
+
+### Moderação de comentários
+
+O dono pode excluir o próprio comentário; um admin também pode excluir comentário alheio. O `usuario_id` do evento identifica quem executou a ação, enquanto `proprietario_id` identifica o dono do comentário.
+
+Quando um admin exclui comentário de outro usuário, os detalhes incluem `"moderacao": true`. Exclusão pelo próprio dono inclui `"moderacao": false`, inclusive quando o dono é admin. A regra é `usuarioEhAdmin && !usuarioEhDono`.
+
+### Ações negadas
+
+Os 403 atuais são registrados com `ACAO_NEGADA` e contexto específico:
+
+| Acesso | `detalhes.recurso` | `detalhes.motivo` |
+|---|---|---|
+| Exclusão proibida de comentário alheio | `EXCLUSAO_COMENTARIO` | `sem_permissao` |
+| Usuário comum tenta `/api/logs` | `CONSULTA_LOGS_ADMIN` | `role_insuficiente` |
+| Usuário comum chama diretamente o GET interno | `CONSULTA_LOGS_INTERNA` | `role_insuficiente` |
+
+`401` significa ausência de autenticação ou sessão inválida. `403` significa usuário autenticado sem autorização. Somente o segundo caso gera `ACAO_NEGADA`; 400, 404 e 409 também não são tratados como negação de permissão. Uma exclusão negada mantém o comentário no banco e não gera `COMENTARIO_APAGADO`.
+
+O catálogo interrompe a consulta pública recusada antes de encaminhar o GET interno. Portanto, essa tentativa gera somente `CONSULTA_LOGS_ADMIN`, sem duplicação de `CONSULTA_LOGS_INTERNA`.
+
+## Comunicação e falhas da auditoria
+
+```text
+Catálogo ── POST /eventos ──► log-service ── XADD ──► Redis Stream auditoria
+
+auth-service ── POST /eventos ──► log-service
+```
+
+Catálogo e auth-service não acessam Redis diretamente. Somente o log-service fala com Redis. Os dois serviços chamadores usam seus módulos `auditoria.js`, que enviam apenas os campos necessários e omitem detalhes vazios.
+
+Uma falha de auditoria não transforma uma ação de negócio concluída em erro. Com log-service parado, os testes confirmaram login e logout funcionando e favorito persistido no MariaDB. Os clientes tratam erros de rede, respostas não bem-sucedidas e timeout de dois segundos, registrando aviso no console. A regra de autorização também continua retornando 403 quando a gravação da negação falha.
+
+Isso reduz a dependência das operações principais em relação à disponibilidade da auditoria. O envio atual é de melhor esforço: não existe fila de reenvio ou recuperação automática dos eventos que falharam. Já a consulta administrativa retorna 503 quando o serviço necessário está indisponível, sem fingir que a lista está vazia.
+
+## Endpoints e consulta administrativa
+
+| Acesso | Endpoint | Comportamento |
+|---|---|---|
+| Interno, gravação | `POST /eventos` | Recebe eventos dos serviços, valida e retorna 201 com `evento_id`; não publicado no host |
+| Interno, leitura | `GET /eventos` ou `GET /eventos?limit=N` | Exige Bearer Token validado e papel admin |
+| Público pelo catálogo | `GET /api/logs` ou `GET /api/logs?limit=N` | Exige cookie de sessão e papel admin; é a rota utilizada pelo administrador |
+| Interno, saúde | `GET /health` do log-service | Verifica o serviço e um PING no Redis; 200 disponível, 503 indisponível |
+
+A gravação interna não exige Bearer Token na implementação atual; a proteção por sessão/admin aplica-se à leitura. O navegador acessa a consulta através do catálogo, não diretamente pelo log-service.
+
+Exemplos de consulta pública:
+
+```text
+GET /api/logs
+GET /api/logs?limit=50
+GET /api/logs?limit=4
+```
+
+O limite padrão é **50** e a faixa aceita é de **1 a 100**, somente inteiros. O catálogo repassa o limite ao log-service, que o valida. Valores como `0`, `-1`, `101`, `abc` e `2.5` retornam 400. O JSON contém `quantidade` e `eventos`, sendo `quantidade` o tamanho do array.
+
+### Dupla proteção e fluxo de consulta
+
+No catálogo, `verificarAutenticacao` valida a sessão no auth-service e recupera o papel atual. A rota permite somente `role === 'admin'`; usuários comuns recebem 403 e têm a tentativa auditada.
+
+O log-service recebe o mesmo token em `Authorization: Bearer <token>`, consulta novamente `/auth/validar` e verifica o papel atual antes de ler Redis. O auth-service valida assinatura/expiração do JWT e consulta o usuário no MariaDB. A autorização não depende de esconder um recurso no frontend, nem do papel antigo gravado no token.
+
+```text
+Admin ── cookie HttpOnly / GET /api/logs ──► Catálogo
+                                               │ valida sessão e role no auth-service
+                                               │ Authorization: Bearer <token>
+                                               ▼
+                                          log-service
+                                               │ GET /auth/validar
+                                               ▼
+                                          auth-service
+                                               │ usuário + role atual
+                                               ▼
+                                          log-service
+                                               │ XREVRANGE
+                                               ▼
+                                             Redis
+```
+
+O token não vai no corpo ou na query da consulta e não é registrado pela integração de auditoria. O catálogo preserva respostas esperadas 400, 401, 403 e 503; falhas de comunicação com log-service retornam 503 sem stack trace.
+
+### Ordem dos eventos
+
+`XREVRANGE` seleciona os últimos N registros do mais recente para o mais antigo. Antes de responder, a aplicação inverte esse conjunto: a apresentação fica do mais antigo para o mais recente **dentro dos últimos N selecionados**. A ordem segue os IDs do Stream, isto é, a sequência de inserção, e não uma ordenação pelo timestamp eventualmente informado pelo cliente.
+
+## Segurança dos dados
+
+Os produtores de eventos não enviam senha, hash de senha, JWT, cookie ou token de recuperação. O log-service rejeita com 400 chaves sensíveis em `detalhes`, incluindo `senha`, `password`, `senha_hash`, `token`, `jwt`, `cookie`, `authorization`, `reset_token`, `access_token` e `refresh_token`.
+
+A inspeção é recursiva, inclusive em objetos dentro de listas, normalizando maiúsculas/minúsculas e separadores nas chaves. É uma proteção por nomes de campos, não um detector geral de segredos em texto livre. As rotas enviam contexto limitado e não incluem e-mail, credenciais ou o conteúdo completo dos comentários nos eventos de auditoria.
+
+## Demonstração
+
+### Usuário comum
+
+1. Realizar login.
+2. Favoritar um filme.
+3. Criar um comentário.
+4. Tentar uma ação sem permissão, como apagar comentário de outro usuário.
+5. Tentar acessar `/api/logs` com a sessão ativa.
+6. Confirmar `403 Forbidden` na consulta.
+
+### Administrador
+
+1. Realizar login com uma conta cujo papel atual seja admin.
+2. Consultar `GET /api/logs?limit=50` pelo catálogo, usando o cookie da sessão.
+3. Visualizar os eventos gerados no fluxo anterior.
+
+Na demonstração real, a conta comum de teste tinha ID 32 e a conta administrativa ID 33. A consulta do admin mostrou a sequência abaixo, também confirmada diretamente no Redis:
+
+```text
+1790048606660-0 LOGIN
+1790048607850-0 FILME_FAVORITADO
+1790048609031-0 COMENTARIO_CRIADO
+1790048610376-0 ACAO_NEGADA — EXCLUSAO_COMENTARIO
+1790048611034-0 ACAO_NEGADA — CONSULTA_LOGS_ADMIN
+```
+
+Não houve negação interna duplicada para a tentativa pública. As contas e dados de negócio temporários foram removidos após os testes; o Stream não foi limpo artificialmente para a demonstração. Os IDs acima são evidência do teste realizado, não valores fixos esperados em novas execuções.
+
+### Evidência — consulta como administrador
+
+O print real da consulta como admin, mostrando os eventos capturados, ainda deve ser inserido antes da entrega.
+
+<!-- Inserir aqui o print real da consulta GET /api/logs?limit=50 realizada com usuário admin, mostrando os eventos capturados. -->
+
+## Como executar e verificar
+
+Com Docker e Docker Compose disponíveis, configure os arquivos `.env` do catálogo e `auth-service/.env` a partir dos exemplos já existentes, com suas próprias configurações de banco, TMDB, JWT e SMTP. Não versione esses arquivos. Para log-service, o Compose já fornece as variáveis documentadas em `log-service/.env.example`.
+
+Na raiz do projeto:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Devem aparecer `catalogo`, `auth-service`, `log-service` e `redis`. Somente catálogo apresenta mapeamento para o host (`3000:3000`); os outros apresentam apenas suas portas internas. O healthcheck aguarda Redis saudável para iniciar log-service, que mantém reconexão automática.
+
+Para inspeção manual do Stream dentro do container, use:
+
+```bash
+docker compose exec redis redis-cli XRANGE auditoria - +
+docker compose exec redis redis-cli XREVRANGE auditoria + - COUNT 20
+```
+
+`XRANGE` percorre os registros em ordem crescente de ID. `XREVRANGE` mostra os 20 mais recentes primeiro; a API inverte o conjunto selecionado para facilitar a leitura cronológica. Esses comandos administrativos são executados no container e não exigem publicar a porta Redis.
+
+## Testes executados
+
+Resultados obtidos durante os incrementos técnicos da Atividade 5:
+
+| Validação | Resultado observado |
+|---|---|
+| `POST /eventos` válido | 201; ID retornado corresponde ao registro no Stream |
+| Evento inválido ou JSON malformado | 400, sem gravação |
+| Campo sensível, inclusive aninhado | 400, sem gravação |
+| Redis indisponível durante gravação | 503; serviço não encerra |
+| Usuário comum consulta logs | 403 e `ACAO_NEGADA` com recurso correto |
+| Admin consulta logs | 200; consultas pública e interna retornam os mesmos registros |
+| Consulta sem autenticação ou com token inválido | 401; sem `ACAO_NEGADA` |
+| Limites inválidos | 400, preservado pelo catálogo |
+| Limites padrão, 4 e 100 | 200; quantidade respeitada e últimos N em ordem crescente de ID |
+| Redis indisponível durante consulta | 503; não retorna lista vazia como sucesso |
+| Redis restaurado | Consulta volta a 200 |
+| Detalhes antigos inválidos | Consulta preservada; detalhes substituídos por objeto vazio |
+| Mudança do papel no banco com o mesmo token | Nova permissão reconhecida pelo backend |
+| Dono/admin excluem comentário autorizado | 200 e `COMENTARIO_APAGADO`; moderação correta |
+| Exclusão proibida de comentário | 403; comentário permanece no banco; somente negação para essa tentativa |
+| log-service indisponível durante operações principais | Login 200, favorito 201 persistido e logout 200; aviso no console |
+| log-service indisponível durante consulta pública | 503; após restauração, 200 |
+| Auditoria indisponível durante tentativa proibida | 403 preservado |
+
+Também foram verificados sintaxe, build dos containers, isolamento das portas, correspondência dos IDs da API com o Stream e ausência de credenciais nos eventos inspecionados. Os testes de consulta estão em `log-service/test/consulta.js`; os de gravação, em `log-service/test/eventos.js`.
+
+## Estrutura atual relacionada à auditoria
+
+Recorte dos arquivos reais adicionados ou utilizados nesta atividade; os demais arquivos das atividades anteriores continuam no projeto:
+
+```text
+catalogo-filmes/
+├── src/
+│   ├── server.js
+│   ├── auth.js
+│   ├── auditoria.js
+│   ├── logs.js
+│   ├── middlewareAuth.js
+│   ├── favoritos.js
+│   └── comentarios.js
+├── auth-service/
+│   ├── src/
+│   │   ├── auth.js
+│   │   └── auditoria.js
+│   └── .env.example
+├── log-service/
+│   ├── src/
+│   │   ├── server.js
+│   │   ├── redis.js
+│   │   ├── evento.js
+│   │   ├── eventos.js
+│   │   ├── consulta.js
+│   │   └── middlewareAuth.js
+│   ├── test/
+│   │   ├── eventos.js
+│   │   └── consulta.js
+│   ├── .dockerignore
+│   ├── .env.example
+│   ├── Dockerfile
+│   ├── package.json
+│   └── package-lock.json
+├── .env.example
+├── docker-compose.yml
+└── README.md
+```
+
+---
+
 # Tecnologias utilizadas
 
 - Node.js
