@@ -13,6 +13,7 @@ const filmesRoutes = require('./filmes');
 const favoritosRoutes = require('./favoritos');
 const comentariosRoutes = require('./comentarios');
 const logsRoutes = require('./logs');
+const adminRoutes = require('./admin');
 
 
 // ========================================
@@ -78,6 +79,7 @@ app.use(
 );
 
 app.use('/api/logs', logsRoutes);
+app.use('/api/admin', adminRoutes);
 
 
 // ========================================

@@ -14,7 +14,8 @@ async function verificarAutenticacao(req, res, next) {
                 method: 'GET',
                 headers: {
                     Authorization: `Bearer ${token}`
-                }
+                },
+                signal: AbortSignal.timeout(2000)
             }
         );
 
@@ -33,10 +34,7 @@ async function verificarAutenticacao(req, res, next) {
         next();
 
     } catch (erro) {
-        console.error(
-            'Erro ao consultar auth-service:',
-            erro
-        );
+        console.error('Erro ao consultar auth-service.');
 
         return res.status(503).json({
             mensagem:
