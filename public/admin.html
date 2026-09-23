@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administração | Catálogo de Filmes</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="admin.js" defer></script>
+</head>
+<body class="admin-page">
+    <div id="admin-status" class="admin-status" role="status">
+        <p id="admin-status-message">Carregando painel...</p>
+        <div id="admin-recovery" hidden>
+            <button id="admin-retry" type="button">Tentar novamente</button>
+            <a href="/catalogo.html">Voltar</a>
+        </div>
+    </div>
+    <noscript>Ative o JavaScript para validar sua sessão e acessar o painel.</noscript>
+    <div id="admin-shell" class="admin-shell" hidden>
+        <aside class="admin-sidebar">
+            <div class="admin-sidebar-header"><strong>Catálogo de Filmes</strong><span>Administração</span></div>
+            <nav class="admin-nav" aria-label="Navegação administrativa">
+                <a class="admin-nav-item" href="#overview" data-target="overview">Visão geral</a>
+                <a class="admin-nav-item" href="#auditoria" data-target="audit">Auditoria</a>
+                <a class="admin-nav-item" href="#usuarios" data-target="users">Usuários</a>
+            </nav>
+            <div class="admin-sidebar-footer">
+                <a href="/catalogo.html">Voltar ao catálogo</a>
+                <button id="admin-logout" type="button">Sair</button>
+                <p id="admin-logout-error" role="alert" hidden></p>
+            </div>
+        </aside>
+        <main class="admin-main">
+            <header class="admin-topbar"><span>Painel administrativo</span><div class="admin-identity"><strong id="admin-name"></strong><span class="admin-role-badge">Administrador</span></div></header>
+            <div class="admin-content">
+                <section class="admin-section" data-section="overview" hidden aria-labelledby="overview-title">
+                    <div class="admin-page-header"><p class="admin-eyebrow">ADMINISTRAÇÃO</p><h1 id="overview-title" tabindex="-1">Visão geral</h1><p>Acompanhe as principais atividades administrativas da plataforma.</p></div>
+                    <dl class="admin-metrics">
+                        <div><dt>Eventos registrados</dt><dd>—<span>Em breve</span></dd></div>
+                        <div><dt>Logins</dt><dd>—<span>Em breve</span></dd></div>
+                        <div><dt>Ações negadas</dt><dd>—<span>Em breve</span></dd></div>
+                        <div><dt>Alterações de acesso</dt><dd>—<span>Em breve</span></dd></div>
+                    </dl>
+                    <div class="admin-panel"><h2>Atividade recente</h2><div class="admin-placeholder"><strong>Um lugar para acompanhar a plataforma</strong><p>As atividades recentes serão exibidas aqui.</p></div></div>
+                </section>
+                <section class="admin-section" data-section="audit" hidden aria-labelledby="audit-title">
+                    <div class="admin-page-header"><p class="admin-eyebrow">ADMINISTRAÇÃO</p><h1 id="audit-title" tabindex="-1">Auditoria</h1><p>Consulte eventos de autenticação, segurança e ações realizadas na plataforma.</p></div>
+                    <div id="admin-audit-content" class="admin-panel admin-placeholder"><strong>Histórico de atividades</strong><p>Os eventos de auditoria serão exibidos aqui.</p><span class="admin-coming">Em breve</span></div>
+                </section>
+                <section class="admin-section" data-section="users" hidden aria-labelledby="users-title">
+                    <div class="admin-page-header"><p class="admin-eyebrow">ADMINISTRAÇÃO</p><h1 id="users-title" tabindex="-1">Usuários</h1><p>Gerencie os níveis de acesso dos usuários cadastrados.</p></div>
+                    <div id="admin-users-content" class="admin-panel admin-placeholder"><strong>Gestão de acesso</strong><p>A gestão de usuários estará disponível aqui.</p><span class="admin-coming">Em breve</span></div>
+                </section>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
