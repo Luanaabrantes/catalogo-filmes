@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 
 const authRoutes = require('./auth');
+const adminRoutes = require('./admin');
 const recuperacaoSenhaRoutes = require('./recuperacaoSenha');
 
 const app = express();
@@ -19,6 +20,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/auth', authRoutes);
+app.use('/auth/admin', adminRoutes);
 app.use('/auth', recuperacaoSenhaRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
