@@ -3,6 +3,7 @@ const statusPainel = document.getElementById('admin-status');
 const mensagem = document.getElementById('admin-status-message');
 const recovery = document.getElementById('admin-recovery');
 let usuarioAutenticado = null;
+let revalidacaoEmCurso = false;
 const secoes = { '#overview': 'overview', '#auditoria': 'audit', '#usuarios': 'users' };
 
 function navegar(focar = false) {
@@ -19,7 +20,10 @@ function navegar(focar = false) {
         else link.removeAttribute('aria-current');
     });
     if (['audit', 'overview'].includes(secao) && usuarioAutenticado && (!auditoriaCarregada || auditoriaDesatualizada) && !shell.hidden) carregarAuditoria();
-    if (secao === 'users' && usuarioAutenticado && !usuariosCarregados && !shell.hidden) carregarUsuarios();
+    if (secao === 'users' && usuarioAutenticado && !shell.hidden) {
+        if (!usuariosCarregados) carregarUsuarios();
+        else renderizarUsuarios();
+    }
 }
 
 async function validarSessao() {
@@ -45,6 +49,36 @@ async function validarSessao() {
         recovery.hidden = false;
     }
 }
+
+async function revalidarSessaoSilenciosamente() {
+    if (revalidacaoEmCurso || !usuarioAutenticado || shell.hidden) return;
+    revalidacaoEmCurso = true;
+    try {
+        const resposta = await fetch('/api/auth/me', { signal: AbortSignal.timeout(10000), cache: 'no-store' });
+        if (resposta.status === 401) {
+            usuarioAutenticado = null;
+            return window.location.replace('/');
+        }
+        if (!resposta.ok) throw new Error('Sessão temporariamente indisponível');
+        const dados = await resposta.json();
+        if (!dados.usuario || typeof dados.usuario.role !== 'string') throw new Error('Sessão inválida');
+        if (dados.usuario.role !== 'admin') {
+            usuarioAutenticado = null;
+            return window.location.replace('/catalogo.html');
+        }
+        usuarioAutenticado = dados.usuario;
+        document.getElementById('admin-name').textContent = dados.usuario.nome;
+    } catch {
+        toast('Não foi possível revalidar sua sessão.', 'error');
+    } finally {
+        revalidacaoEmCurso = false;
+    }
+}
+
+// Cookies são compartilhados entre abas do mesmo domínio; revalidamos a identidade ao retornar à aba.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') revalidarSessaoSilenciosamente();
+});
 
 window.addEventListener('hashchange', () => {
     definirMenu(false, false);
@@ -120,6 +154,7 @@ definirMenu(false, false);
 let usuarios = [];
 let usuariosCarregados = false;
 let carregandoUsuarios = false;
+let carregamentoCacheUsuarios = null;
 let salvandoRole = false;
 let usuarioAlvo = null;
 let origemModal = null;
@@ -151,6 +186,11 @@ function renderizarUsuarios() {
     const filtrados = usuarios.filter(u => u.nome.toLowerCase().includes(termo) || u.email.toLowerCase().includes(termo));
     corpoUsuarios.replaceChildren();
     tabelaUsuarios.hidden = filtrados.length === 0;
+    const administradores = usuarios.filter(u => u.role === 'admin').length;
+    const resumoUsuarios = document.getElementById('admin-users-summary');
+    resumoUsuarios.textContent = `${usuarios.length} ${usuarios.length === 1 ? 'usuário cadastrado' : 'usuários cadastrados'} · ${administradores} ${administradores === 1 ? 'administrador' : 'administradores'}`;
+    resumoUsuarios.hidden = false;
+    atualizarResumoOverviewUsuarios();
     statusUsuarios.textContent = !usuarios.length ? 'Nenhum usuário cadastrado.' : !filtrados.length ? 'Nenhum usuário encontrado para esta busca.' : '';
     for (const usuario of filtrados) {
         const linha = document.createElement('tr');
@@ -179,6 +219,32 @@ function renderizarUsuarios() {
         }
         linha.append(nome, email, papel, acoes); corpoUsuarios.append(linha);
     }
+}
+
+function atualizarResumoOverviewUsuarios(disponivel = true) {
+    document.getElementById('admin-security-users').textContent = disponivel && usuariosCarregados ? usuarios.length : '—';
+    document.getElementById('admin-security-admins').textContent = disponivel && usuariosCarregados ? usuarios.filter(u => u.role === 'admin').length : '—';
+}
+
+async function obterUsuarios(forcarAtualizacao = false) {
+    if (usuariosCarregados && !forcarAtualizacao) return usuarios;
+    if (!carregamentoCacheUsuarios) {
+        carregamentoCacheUsuarios = (async () => {
+            const resposta = await fetch('/api/admin/usuarios', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+            if (!await verificarAcessoResposta(resposta)) throw new Error('A sessão precisa ser validada novamente.');
+            const dados = await resposta.json();
+            if (!resposta.ok) {
+                const erro = new Error(mensagemErro(resposta.status, dados));
+                erro.mensagemSegura = true;
+                throw erro;
+            }
+            if (!Array.isArray(dados.usuarios) || !dados.usuarios.every(u => Number.isInteger(u.id) && typeof u.nome === 'string' && typeof u.email === 'string' && ['admin', 'usuario'].includes(u.role))) throw new Error('Resposta inválida');
+            usuarios = dados.usuarios;
+            usuariosCarregados = true;
+            return usuarios;
+        })().finally(() => { carregamentoCacheUsuarios = null; });
+    }
+    return carregamentoCacheUsuarios;
 }
 
 function atualizarBotoesUsuarios() {
@@ -225,20 +291,10 @@ async function carregarUsuarios() {
     atualizarBotoesUsuarios();
     if (!usuariosCarregados) statusUsuarios.textContent = 'Carregando usuários...';
     try {
-        const resposta = await fetch('/api/admin/usuarios', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
-        if (!await verificarAcessoResposta(resposta)) return;
-        const dados = await resposta.json();
-        if (!resposta.ok) {
-            const erro = new Error(mensagemErro(resposta.status, dados));
-            erro.mensagemSegura = true;
-            throw erro;
-        }
-        if (!Array.isArray(dados.usuarios) || !dados.usuarios.every(u => Number.isInteger(u.id) && typeof u.nome === 'string' && typeof u.email === 'string' && ['admin', 'usuario'].includes(u.role))) throw new Error('Não foi possível concluir a operação.');
-        usuarios = dados.usuarios;
-        usuariosCarregados = true;
+        await obterUsuarios(true);
         renderizarUsuarios();
     } catch (erro) {
-        const texto = erro.name === 'TimeoutError' || erro.name === 'TypeError' ? 'Serviço de usuários temporariamente indisponível. Tente novamente.' : 'Não foi possível concluir a operação.';
+        const texto = erro.mensagemSegura ? erro.message : erro.name === 'TimeoutError' || erro.name === 'TypeError' ? 'Serviço de usuários temporariamente indisponível. Tente novamente.' : 'Não foi possível concluir a operação.';
         if (!usuariosCarregados) {
             statusUsuarios.textContent = 'Não foi possível carregar os usuários.';
             tentarUsuarios.hidden = false;
@@ -374,11 +430,42 @@ function protegerDetalhes(valor, nivel = 0) {
     return valor;
 }
 const textoEvento = valor => ['string', 'number'].includes(typeof valor) && String(valor).length ? String(valor) : '—';
+function ipExibicao(valor) {
+    const texto = textoEvento(valor);
+    if (!texto.startsWith('::ffff:') || !/^::ffff:(?:\d{1,3}\.){3}\d{1,3}$/.test(texto)) return texto;
+    const ipv4 = texto.slice(7);
+    return ipv4.split('.').every(bloco => Number(bloco) <= 255) ? ipv4 : texto;
+}
+function usuarioEvento(evento) {
+    const id = textoEvento(evento.usuario_id);
+    if (id === '—') return '—';
+    const conhecido = usuariosCarregados && usuarios.find(u => String(u.id) === id);
+    return conhecido ? `${conhecido.nome} · #${id}` : `#${id}`;
+}
 function dataEvento(timestamp) {
     if (typeof timestamp !== 'string' || !timestamp) return '—';
     const data = new Date(timestamp);
     if (!Number.isFinite(data.getTime())) return '—';
     return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }).format(data);
+}
+function dataHoraOverview(timestamp) {
+    if (typeof timestamp !== 'string' || !timestamp) return '—';
+    const data = new Date(timestamp);
+    if (!Number.isFinite(data.getTime())) return '—';
+    const dia = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(data);
+    const hora = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(data);
+    return `${dia} às ${hora}`;
+}
+function horaEvento(timestamp) {
+    if (typeof timestamp !== 'string' || !timestamp) return '—';
+    const data = new Date(timestamp);
+    return Number.isFinite(data.getTime()) ? new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(data) : '—';
+}
+function dataEventoCompacta(timestamp) {
+    if (typeof timestamp !== 'string' || !timestamp) return '—';
+    const data = new Date(timestamp);
+    if (!Number.isFinite(data.getTime())) return '—';
+    return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(data).replace(',', ' ·');
 }
 function contextoEvento(evento) {
     const d = protegerDetalhes(evento.detalhes) || {};
@@ -411,11 +498,11 @@ function renderizarAuditoria() {
     for (const evento of filtrados) {
         const linha = document.createElement('tr');
         const celula = texto => { const td = document.createElement('td'); td.textContent = texto; linha.append(td); return td; };
-        celula(dataEvento(evento.timestamp));
-        celula(textoEvento(evento.usuario_id) === '—' ? '—' : `#${evento.usuario_id}`);
+        celula(dataEventoCompacta(evento.timestamp));
+        celula(usuarioEvento(evento));
         celula('').append(badgeEvento(evento));
-        celula(contextoEvento(evento)); celula(textoEvento(evento.ip));
-        const botao = document.createElement('button'); botao.type = 'button'; botao.className = 'admin-action-button'; botao.textContent = 'Ver detalhes';
+        celula(contextoEvento(evento)); celula(ipExibicao(evento.ip));
+        const botao = document.createElement('button'); botao.type = 'button'; botao.className = 'admin-detail-button'; botao.textContent = '›';
         botao.setAttribute('aria-label', `Ver detalhes do evento ${textoEvento(evento.id)}`);
         botao.addEventListener('click', () => abrirDetalhesEvento(evento, botao)); celula('').append(botao);
         corpoAuditoria.append(linha);
@@ -481,8 +568,8 @@ function abrirDetalhesEvento(evento, botao) {
     const resumo = document.getElementById('admin-audit-summary'); resumo.replaceChildren();
     for (const [chave, valor] of [
         ['Ação', textoEvento(evento.acao)], ['ID do evento', textoEvento(evento.id)],
-        ['Usuário', textoEvento(evento.usuario_id) === '—' ? '—' : `#${evento.usuario_id}`],
-        ['Data e hora', dataEvento(evento.timestamp)], ['IP', textoEvento(evento.ip)]
+        ['Usuário', usuarioEvento(evento)],
+        ['Data e hora', dataEvento(evento.timestamp)], ['IP', ipExibicao(evento.ip)]
     ]) parDetalhe(resumo, chave, valor);
     const container = document.getElementById('admin-audit-details'); container.replaceChildren();
     const detalhes = protegerDetalhes(evento.detalhes);
@@ -533,14 +620,14 @@ function listaAtividades(container, eventos) {
         const item = document.createElement('li'); item.className = 'admin-recent-item';
         const main = document.createElement('div'); main.className = 'admin-recent-main';
         const cabecalho = document.createElement('div'); cabecalho.className = 'admin-recent-meta';
-        const data = document.createElement('span'); data.textContent = dataEvento(evento.timestamp);
+        const data = document.createElement('span'); data.textContent = horaEvento(evento.timestamp);
         cabecalho.append(data, badgeEvento(evento));
         const contexto = document.createElement('p');
-        const usuario = textoEvento(evento.usuario_id) === '—' ? 'Usuário —' : `Usuário #${textoEvento(evento.usuario_id)}`;
+        const usuario = usuarioEvento(evento) === '—' ? 'Usuário —' : usuarioEvento(evento);
         const resumo = contextoEvento(evento);
         contexto.textContent = resumo === '—' ? usuario : `${usuario} · ${resumo}`;
         main.append(cabecalho, contexto);
-        const botao = document.createElement('button'); botao.type = 'button'; botao.className = 'admin-action-button'; botao.textContent = 'Ver detalhes';
+        const botao = document.createElement('button'); botao.type = 'button'; botao.className = 'admin-detail-button'; botao.textContent = '›';
         botao.setAttribute('aria-label', `Ver detalhes do evento ${textoEvento(evento.id)}`);
         botao.addEventListener('click', () => abrirDetalhesEvento(evento, botao));
         item.append(main, botao); container.append(item);
@@ -555,7 +642,7 @@ function renderizarVisaoGeral() {
         'admin-metric-denied': negadas, 'admin-metric-roles': alteracoes,
         'admin-security-denied': negadas, 'admin-security-roles': alteracoes
     })) document.getElementById(id).textContent = valor;
-    document.getElementById('admin-overview-window').textContent = `Baseado nos últimos ${limiteCarregado} eventos registrados.`;
+    document.getElementById('admin-overview-window').textContent = `Últimos ${limiteCarregado} eventos analisados · Atualizado em ${dataHoraOverview(ultimaAtualizacaoAuditoria)}`;
     document.getElementById('admin-overview-updated').textContent = `Última atualização: ${dataEvento(ultimaAtualizacaoAuditoria)}`;
     const recentes = [...eventosAuditoria].reverse();
     const seguranca = recentes.filter(e => ['ACAO_NEGADA', 'ROLE_ALTERADA'].includes(e.acao)).slice(0, 3);
@@ -564,6 +651,16 @@ function renderizarVisaoGeral() {
     document.getElementById('admin-recent-empty').hidden = recentes.length > 0;
     document.getElementById('admin-security-empty').hidden = seguranca.length > 0;
     estadoVisaoGeral('success');
+    atualizarResumoOverviewUsuarios();
+    if (!usuariosCarregados) {
+        atualizarResumoOverviewUsuarios(false);
+        obterUsuarios().then(() => {
+            atualizarResumoOverviewUsuarios();
+            if (auditoriaCarregada) renderizarAuditoria();
+            if (auditoriaCarregada) renderizarVisaoGeral();
+            if ((secoes[window.location.hash] || 'overview') === 'users') renderizarUsuarios();
+        }).catch(() => atualizarResumoOverviewUsuarios(false));
+    }
 }
 function atualizarVisaoGeral() {
     if (carregandoAuditoria) return;
