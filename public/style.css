@@ -938,15 +938,22 @@ a {
     .admin-metrics > div:nth-child(-n+2) { border-bottom: 1px solid #e5e7eb; }
     .catalogo-page header { flex-wrap: wrap; gap: 20px; }
 }
-@media (max-width: 700px) {
+/* Menu administrativo recolhível em tablets e celulares. */
+.admin-menu-toggle, .admin-menu-close { display: none; }
+.admin-overlay { position: fixed; inset: 0; z-index: 20; background: rgb(15 23 42 / 45%); }
+@media (max-width: 1024px) {
     .admin-shell { display: block; }
-    .admin-sidebar { min-height: auto; padding: 20px 16px 12px; }
-    .admin-sidebar-header { padding: 0 8px 20px; }
-    .admin-nav { display: flex; gap: 4px; }
-    .admin-nav-item { flex: 1; text-align: center; padding: 12px 6px; font-size: 13px; }
-    .admin-sidebar-footer { margin-top: 16px; padding-top: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; }
-    .admin-sidebar-footer p { width: 100%; }
+    .admin-menu-toggle, .admin-menu-close { display: inline-block; border: 1px solid #64748b; border-radius: 6px; padding: 10px 12px; background: transparent; color: inherit; }
+    .admin-menu-toggle { color: #111827; }
+    .admin-menu-close { align-self: flex-end; margin-bottom: 24px; }
+    .admin-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 21; width: min(280px, 85vw); height: 100dvh; min-height: 0; overflow-y: auto; padding: 20px; visibility: hidden; }
+    .admin-page.admin-menu-open { overflow: hidden; }
+    .admin-menu-open .admin-sidebar { visibility: visible; }
+    .admin-sidebar-header { padding-bottom: 24px; }
+    .admin-sidebar-footer { margin-top: auto; }
     .admin-topbar { padding: 18px 24px; flex-wrap: wrap; gap: 12px; }
+}
+@media (max-width: 700px) {
     .admin-content { padding: 28px 20px; }
     .admin-page-header h1 { font-size: 26px; }
     .admin-metrics > div { padding: 18px; }

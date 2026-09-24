@@ -41,7 +41,10 @@ async function validarSessao() {
     }
 }
 
-window.addEventListener('hashchange', () => navegar(!shell.hidden));
+window.addEventListener('hashchange', () => {
+    definirMenu(false, false);
+    navegar(!shell.hidden);
+});
 document.getElementById('admin-retry').addEventListener('click', validarSessao);
 document.getElementById('admin-logout').addEventListener('click', async event => {
     const botao = event.currentTarget;
@@ -59,3 +62,52 @@ document.getElementById('admin-logout').addEventListener('click', async event =>
     }
 });
 validarSessao();
+
+// O drawer mantém o foco dentro do menu e impede interação com o conteúdo ao fundo.
+const menuMobile = window.matchMedia('(max-width: 1024px)');
+const sidebar = document.getElementById('admin-sidebar');
+const menuToggle = document.getElementById('admin-menu-toggle');
+const menuClose = document.getElementById('admin-menu-close');
+const overlay = document.getElementById('admin-overlay');
+const main = document.querySelector('.admin-main');
+let menuAberto = false;
+
+function definirMenu(aberto, devolverFoco = true) {
+    menuAberto = aberto && menuMobile.matches && !shell.hidden;
+    document.body.classList.toggle('admin-menu-open', menuAberto);
+    overlay.hidden = !menuAberto;
+    menuToggle.setAttribute('aria-expanded', String(menuAberto));
+    sidebar.inert = menuMobile.matches && !menuAberto;
+    main.inert = menuAberto;
+    if (menuAberto) menuClose.focus();
+    else if (devolverFoco && menuMobile.matches) menuToggle.focus();
+}
+menuToggle.addEventListener('click', () => definirMenu(true));
+menuClose.addEventListener('click', () => definirMenu(false));
+overlay.addEventListener('click', () => definirMenu(false));
+document.querySelectorAll('.admin-nav-item').forEach(link => {
+    link.addEventListener('click', () => {
+        if (menuAberto) definirMenu(false);
+    });
+});
+document.addEventListener('keydown', event => {
+    if (!menuAberto) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        definirMenu(false);
+    } else if (event.key === 'Tab') {
+        const itens = [...sidebar.querySelectorAll('a[href], button:not(:disabled)')];
+        const primeiro = itens[0];
+        const ultimo = itens[itens.length - 1];
+        if (event.shiftKey && document.activeElement === primeiro) {
+            event.preventDefault(); ultimo.focus();
+        } else if (!event.shiftKey && document.activeElement === ultimo) {
+            event.preventDefault(); primeiro.focus();
+        }
+    }
+});
+menuMobile.addEventListener('change', () => {
+    const focoNoMenu = sidebar.contains(document.activeElement);
+    definirMenu(false, focoNoMenu);
+});
+definirMenu(false, false);
