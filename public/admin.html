@@ -51,10 +51,40 @@
                 </section>
                 <section class="admin-section" data-section="users" hidden aria-labelledby="users-title">
                     <div class="admin-page-header"><p class="admin-eyebrow">ADMINISTRAÇÃO</p><h1 id="users-title" tabindex="-1">Usuários</h1><p>Gerencie os níveis de acesso dos usuários cadastrados.</p></div>
-                    <div id="admin-users-content" class="admin-panel admin-placeholder"><strong>Gestão de acesso</strong><p>A gestão de usuários será exibida nesta área.</p><span class="admin-coming">Em breve</span></div>
+                    <div id="admin-users-content" class="admin-panel">
+                        <div class="admin-users-toolbar">
+                            <label class="admin-search" for="admin-user-search">Buscar por nome ou e-mail
+                                <input id="admin-user-search" type="search" placeholder="Buscar por nome ou e-mail..." autocomplete="off">
+                            </label>
+                            <button id="admin-users-refresh" class="admin-action-button" type="button">Atualizar</button>
+                        </div>
+                        <p id="admin-users-status" class="admin-users-status" role="status"></p>
+                        <button id="admin-users-retry" class="admin-action-button admin-users-retry" type="button" hidden>Tentar novamente</button>
+                        <div class="admin-table-wrapper" tabindex="0" role="region" aria-label="Usuários cadastrados" hidden>
+                            <table class="admin-table">
+                                <thead><tr><th scope="col">Usuário</th><th scope="col">E-mail</th><th scope="col">Papel</th><th scope="col">Ações</th></tr></thead>
+                                <tbody id="admin-users-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </section>
             </div>
         </main>
     </div>
+    <dialog id="admin-role-modal" class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-role-title" aria-describedby="admin-role-impact">
+        <form id="admin-role-form">
+            <div class="admin-modal-header"><h2 id="admin-role-title">Alterar papel de acesso</h2><button id="admin-role-close" type="button" aria-label="Fechar alteração de papel">×</button></div>
+            <div class="admin-modal-body">
+                <strong id="admin-role-name"></strong><p id="admin-role-email"></p>
+                <p>Papel atual: <strong id="admin-role-current"></strong></p>
+                <label for="admin-role-select">Novo papel</label>
+                <select id="admin-role-select" required></select>
+                <p id="admin-role-impact" class="admin-role-impact"></p>
+                <p id="admin-role-error" class="admin-inline-error" role="alert" hidden></p>
+            </div>
+            <div class="admin-modal-footer"><button id="admin-role-cancel" class="admin-action-button" type="button">Cancelar</button><button id="admin-role-confirm" class="admin-action-button admin-primary-button" type="submit">Confirmar alteração</button></div>
+        </form>
+    </dialog>
+    <div id="admin-toast-region" class="admin-toast-region" role="status" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
