@@ -37,13 +37,21 @@
             <div class="admin-content">
                 <section class="admin-section" data-section="overview" hidden aria-labelledby="overview-title">
                     <div class="admin-page-header"><p class="admin-eyebrow">ADMINISTRAÇÃO</p><h1 id="overview-title" tabindex="-1">Visão geral</h1><p>Acompanhe as principais atividades administrativas da plataforma.</p></div>
-                    <dl class="admin-metrics">
-                        <div><dt>Eventos registrados</dt><dd>—<span>Em breve</span></dd></div>
-                        <div><dt>Logins</dt><dd>—<span>Em breve</span></dd></div>
-                        <div><dt>Ações negadas</dt><dd>—<span>Em breve</span></dd></div>
-                        <div><dt>Alterações de acesso</dt><dd>—<span>Em breve</span></dd></div>
-                    </dl>
-                    <div class="admin-panel"><h2>Atividade recente</h2><div class="admin-placeholder"><strong>Um lugar para acompanhar a plataforma</strong><p>Os dados de atividade serão carregados nesta área.</p></div></div>
+                    <div class="admin-overview-meta"><div><p id="admin-overview-window">Janela analisada: últimos 50 eventos.</p><p id="admin-overview-updated">Última atualização: —</p></div><button id="admin-overview-refresh" class="admin-action-button" type="button">Atualizar</button></div>
+                    <p id="admin-overview-status" class="admin-users-status" role="status">Carregando visão geral...</p>
+                    <button id="admin-overview-retry" class="admin-action-button" type="button" hidden>Tentar novamente</button>
+                    <div id="admin-overview-data" hidden>
+                        <dl class="admin-metrics">
+                            <div><dt>Eventos na janela</dt><dd><strong id="admin-metric-events"></strong><span>na janela carregada</span></dd></div>
+                            <div><dt>Logins</dt><dd><strong id="admin-metric-logins"></strong><span>na janela carregada</span></dd></div>
+                            <div><dt>Ações negadas</dt><dd><strong id="admin-metric-denied"></strong><span>na janela carregada</span></dd></div>
+                            <div><dt>Alterações de acesso</dt><dd><strong id="admin-metric-roles"></strong><span>na janela carregada</span></dd></div>
+                        </dl>
+                        <div class="admin-overview-panels">
+                            <div class="admin-panel"><header class="admin-overview-panel-header"><h2>Atividade recente</h2><a href="#auditoria">Ver toda a auditoria</a></header><ul id="admin-recent-list" class="admin-recent-list"></ul><p id="admin-recent-empty" class="admin-users-status" hidden>Nenhuma atividade registrada nesta janela.</p></div>
+                            <div class="admin-panel"><h2>Segurança e acesso</h2><dl class="admin-security-summary"><div><dt>Ações negadas</dt><dd id="admin-security-denied"></dd></div><div><dt>Alterações de acesso</dt><dd id="admin-security-roles"></dd></div></dl><ul id="admin-security-list" class="admin-recent-list admin-security-list"></ul><p id="admin-security-empty" class="admin-users-status" hidden>Nenhum evento de segurança ou alteração de acesso nesta janela.</p></div>
+                        </div>
+                    </div>
                 </section>
                 <section class="admin-section" data-section="audit" hidden aria-labelledby="audit-title">
                     <div class="admin-page-header"><p class="admin-eyebrow">ADMINISTRAÇÃO</p><h1 id="audit-title" tabindex="-1">Auditoria</h1><p>Consulte eventos de autenticação, segurança e ações realizadas na plataforma.</p></div>

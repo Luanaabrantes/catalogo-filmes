@@ -18,7 +18,7 @@ function navegar(focar = false) {
         if (ativo) link.setAttribute('aria-current', 'page');
         else link.removeAttribute('aria-current');
     });
-    if (secao === 'audit' && usuarioAutenticado && !auditoriaCarregada && !shell.hidden) carregarAuditoria();
+    if (['audit', 'overview'].includes(secao) && usuarioAutenticado && (!auditoriaCarregada || auditoriaDesatualizada) && !shell.hidden) carregarAuditoria();
     if (secao === 'users' && usuarioAutenticado && !usuariosCarregados && !shell.hidden) carregarUsuarios();
 }
 
@@ -206,6 +206,7 @@ async function verificarAcessoResposta(resposta, origem = 'users') {
         if (origem === 'audit' && !auditoriaCarregada && usuarioAutenticado) {
             statusAuditoria.textContent = 'Não foi possível carregar os eventos de auditoria.';
             tentarAuditoria.hidden = false;
+            estadoVisaoGeral('error');
         }
     }
     return false;
@@ -310,6 +311,7 @@ document.getElementById('admin-role-form').addEventListener('submit', async even
             erroRole.textContent = mensagemErro(resposta.status, dados); erroRole.hidden = false; return;
         }
         if (dados.usuario?.id !== alvo.id || !['usuario', 'admin'].includes(dados.usuario.role)) throw new Error('Resposta inválida');
+        if (dados.usuario.role !== alvo.role) { auditoriaDesatualizada = true; revisaoAuditoria++; }
         usuarios = usuarios.map(u => u.id === alvo.id ? { ...u, role: dados.usuario.role } : u);
         salvandoRole = false;
         renderizarUsuarios(); fecharRole();
@@ -332,6 +334,9 @@ tentarUsuarios.addEventListener('click', carregarUsuarios);
 // O array recebido é mantido em ordem cronológica; a exibição usa uma cópia invertida.
 let eventosAuditoria = [];
 let auditoriaCarregada = false;
+let auditoriaDesatualizada = false;
+let revisaoAuditoria = 0;
+let ultimaAtualizacaoAuditoria = null;
 let carregandoAuditoria = false;
 let limiteCarregado = '50';
 let origemDrawer = null;
@@ -408,8 +413,7 @@ function renderizarAuditoria() {
         const celula = texto => { const td = document.createElement('td'); td.textContent = texto; linha.append(td); return td; };
         celula(dataEvento(evento.timestamp));
         celula(textoEvento(evento.usuario_id) === '—' ? '—' : `#${evento.usuario_id}`);
-        const mapeamento = Object.hasOwn(acoesAuditoria, evento.acao) ? acoesAuditoria[evento.acao] : [textoEvento(evento.acao), 'neutral'];
-        const badge = document.createElement('span'); badge.className = `admin-event-badge admin-event-${mapeamento[1]}`; badge.textContent = mapeamento[0]; celula('').append(badge);
+        celula('').append(badgeEvento(evento));
         celula(contextoEvento(evento)); celula(textoEvento(evento.ip));
         const botao = document.createElement('button'); botao.type = 'button'; botao.className = 'admin-action-button'; botao.textContent = 'Ver detalhes';
         botao.setAttribute('aria-label', `Ver detalhes do evento ${textoEvento(evento.id)}`);
@@ -421,7 +425,10 @@ async function carregarAuditoria() {
     if (carregandoAuditoria || !usuarioAutenticado || shell.hidden) return;
     const limite = limiteAuditoria.value;
     if (!['20', '50', '100'].includes(limite)) { limiteAuditoria.value = limiteCarregado; return; }
+    const origemOverview = (secoes[window.location.hash] || 'overview') === 'overview';
+    const revisaoConsulta = revisaoAuditoria;
     carregandoAuditoria = true;
+    estadoVisaoGeral('loading');
     atualizarAuditoria.disabled = limiteAuditoria.disabled = tentarAuditoria.disabled = true;
     atualizarAuditoria.textContent = 'Atualizando...'; tentarAuditoria.hidden = true;
     if (!auditoriaCarregada) statusAuditoria.textContent = 'Carregando eventos...';
@@ -436,13 +443,19 @@ async function carregarAuditoria() {
         if (!Array.isArray(dados.eventos) || !dados.eventos.every(e => e && typeof e === 'object' && !Array.isArray(e))) throw new Error('Resposta inválida');
         eventosAuditoria = dados.eventos;
         auditoriaCarregada = true; limiteCarregado = limite;
+        auditoriaDesatualizada = revisaoConsulta !== revisaoAuditoria;
+        ultimaAtualizacaoAuditoria = new Date().toISOString();
         renderizarAuditoria();
+        renderizarVisaoGeral();
     } catch (erro) {
         if (!auditoriaCarregada) { statusAuditoria.textContent = 'Não foi possível carregar os eventos de auditoria.'; tentarAuditoria.hidden = false; }
         limiteAuditoria.value = limiteCarregado;
-        toast(erro.mensagemSegura ? erro.message : 'Serviço de auditoria temporariamente indisponível.', 'error');
+        estadoVisaoGeral('error');
+        toast(origemOverview && auditoriaCarregada ? 'Não foi possível atualizar os dados.' : erro.mensagemSegura ? erro.message : 'Serviço de auditoria temporariamente indisponível.', 'error');
     } finally {
         carregandoAuditoria = false;
+        atualizarOverview.disabled = tentarOverview.disabled = false;
+        atualizarOverview.textContent = 'Atualizar';
         atualizarAuditoria.disabled = limiteAuditoria.disabled = tentarAuditoria.disabled = false;
         atualizarAuditoria.textContent = 'Atualizar';
     }
@@ -496,4 +509,67 @@ acaoAuditoria.addEventListener('change', () => { if (auditoriaCarregada) renderi
 limiteAuditoria.addEventListener('change', carregarAuditoria);
 atualizarAuditoria.addEventListener('click', carregarAuditoria);
 tentarAuditoria.addEventListener('click', carregarAuditoria);
+
+const atualizarOverview = document.getElementById('admin-overview-refresh');
+const tentarOverview = document.getElementById('admin-overview-retry');
+const statusOverview = document.getElementById('admin-overview-status');
+function estadoVisaoGeral(estado) {
+    atualizarOverview.disabled = tentarOverview.disabled = estado === 'loading';
+    atualizarOverview.textContent = estado === 'loading' ? 'Atualizando...' : 'Atualizar';
+    document.getElementById('admin-overview-data').hidden = !auditoriaCarregada;
+    tentarOverview.hidden = auditoriaCarregada || estado !== 'error';
+    statusOverview.textContent = auditoriaCarregada ? '' : estado === 'error'
+        ? 'Não foi possível carregar os dados administrativos.' : 'Carregando visão geral...';
+}
+function badgeEvento(evento) {
+    const [label, tipo] = Object.hasOwn(acoesAuditoria, evento.acao) ? acoesAuditoria[evento.acao] : [textoEvento(evento.acao), 'neutral'];
+    const badge = document.createElement('span');
+    badge.className = `admin-event-badge admin-event-${tipo}`; badge.textContent = label;
+    return badge;
+}
+function listaAtividades(container, eventos) {
+    container.replaceChildren();
+    for (const evento of eventos) {
+        const item = document.createElement('li'); item.className = 'admin-recent-item';
+        const main = document.createElement('div'); main.className = 'admin-recent-main';
+        const cabecalho = document.createElement('div'); cabecalho.className = 'admin-recent-meta';
+        const data = document.createElement('span'); data.textContent = dataEvento(evento.timestamp);
+        cabecalho.append(data, badgeEvento(evento));
+        const contexto = document.createElement('p');
+        const usuario = textoEvento(evento.usuario_id) === '—' ? 'Usuário —' : `Usuário #${textoEvento(evento.usuario_id)}`;
+        const resumo = contextoEvento(evento);
+        contexto.textContent = resumo === '—' ? usuario : `${usuario} · ${resumo}`;
+        main.append(cabecalho, contexto);
+        const botao = document.createElement('button'); botao.type = 'button'; botao.className = 'admin-action-button'; botao.textContent = 'Ver detalhes';
+        botao.setAttribute('aria-label', `Ver detalhes do evento ${textoEvento(evento.id)}`);
+        botao.addEventListener('click', () => abrirDetalhesEvento(evento, botao));
+        item.append(main, botao); container.append(item);
+    }
+}
+function renderizarVisaoGeral() {
+    if (!auditoriaCarregada) return;
+    const contar = acao => eventosAuditoria.filter(e => e.acao === acao).length;
+    const negadas = contar('ACAO_NEGADA'); const alteracoes = contar('ROLE_ALTERADA');
+    for (const [id, valor] of Object.entries({
+        'admin-metric-events': eventosAuditoria.length, 'admin-metric-logins': contar('LOGIN'),
+        'admin-metric-denied': negadas, 'admin-metric-roles': alteracoes,
+        'admin-security-denied': negadas, 'admin-security-roles': alteracoes
+    })) document.getElementById(id).textContent = valor;
+    document.getElementById('admin-overview-window').textContent = `Baseado nos últimos ${limiteCarregado} eventos registrados.`;
+    document.getElementById('admin-overview-updated').textContent = `Última atualização: ${dataEvento(ultimaAtualizacaoAuditoria)}`;
+    const recentes = [...eventosAuditoria].reverse();
+    const seguranca = recentes.filter(e => ['ACAO_NEGADA', 'ROLE_ALTERADA'].includes(e.acao)).slice(0, 3);
+    listaAtividades(document.getElementById('admin-recent-list'), recentes.slice(0, 5));
+    listaAtividades(document.getElementById('admin-security-list'), seguranca);
+    document.getElementById('admin-recent-empty').hidden = recentes.length > 0;
+    document.getElementById('admin-security-empty').hidden = seguranca.length > 0;
+    estadoVisaoGeral('success');
+}
+function atualizarVisaoGeral() {
+    if (carregandoAuditoria) return;
+    limiteAuditoria.value = limiteCarregado;
+    carregarAuditoria();
+}
+atualizarOverview.addEventListener('click', atualizarVisaoGeral);
+tentarOverview.addEventListener('click', atualizarVisaoGeral);
 validarSessao();
