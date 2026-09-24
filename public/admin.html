@@ -47,7 +47,24 @@
                 </section>
                 <section class="admin-section" data-section="audit" hidden aria-labelledby="audit-title">
                     <div class="admin-page-header"><p class="admin-eyebrow">ADMINISTRAÇÃO</p><h1 id="audit-title" tabindex="-1">Auditoria</h1><p>Consulte eventos de autenticação, segurança e ações realizadas na plataforma.</p></div>
-                    <div id="admin-audit-content" class="admin-panel admin-placeholder"><strong>Histórico de atividades</strong><p>Os eventos de auditoria serão exibidos aqui.</p><span class="admin-coming">Em breve</span></div>
+                    <div id="admin-audit-content" class="admin-panel">
+                        <div class="admin-audit-toolbar">
+                            <label class="admin-search admin-audit-search" for="admin-audit-search">Buscar evento, usuário ou recurso
+                                <input id="admin-audit-search" type="search" placeholder="Buscar evento, usuário ou recurso..." autocomplete="off">
+                            </label>
+                            <label class="admin-audit-filter" for="admin-audit-action">Ação<select id="admin-audit-action"><option value="">Todas as ações</option></select></label>
+                            <label class="admin-audit-filter" for="admin-audit-limit">Últimos<select id="admin-audit-limit"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select></label>
+                            <button id="admin-audit-refresh" class="admin-action-button" type="button">Atualizar</button>
+                        </div>
+                        <p id="admin-audit-status" class="admin-users-status" role="status"></p>
+                        <button id="admin-audit-retry" class="admin-action-button admin-users-retry" type="button" hidden>Tentar novamente</button>
+                        <div id="admin-audit-table-wrapper" class="admin-table-wrapper" tabindex="0" role="region" aria-label="Eventos de auditoria" hidden>
+                            <table class="admin-table admin-audit-table">
+                                <thead><tr><th scope="col">Data e hora</th><th scope="col">Usuário</th><th scope="col">Ação</th><th scope="col">Contexto</th><th scope="col">IP</th><th scope="col">Detalhes</th></tr></thead>
+                                <tbody id="admin-audit-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </section>
                 <section class="admin-section" data-section="users" hidden aria-labelledby="users-title">
                     <div class="admin-page-header"><p class="admin-eyebrow">ADMINISTRAÇÃO</p><h1 id="users-title" tabindex="-1">Usuários</h1><p>Gerencie os níveis de acesso dos usuários cadastrados.</p></div>
@@ -71,6 +88,10 @@
             </div>
         </main>
     </div>
+    <dialog id="admin-audit-drawer" class="admin-audit-drawer" role="dialog" aria-modal="true" aria-labelledby="admin-audit-drawer-title">
+        <header class="admin-audit-drawer-header"><h2 id="admin-audit-drawer-title">Detalhes do evento</h2><button id="admin-audit-close" type="button" aria-label="Fechar detalhes do evento">×</button></header>
+        <div class="admin-audit-drawer-body"><dl id="admin-audit-summary" class="admin-audit-details"></dl><h3>Contexto</h3><dl id="admin-audit-details" class="admin-audit-details"></dl></div>
+    </dialog>
     <dialog id="admin-role-modal" class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-role-title" aria-describedby="admin-role-impact">
         <form id="admin-role-form">
             <div class="admin-modal-header"><h2 id="admin-role-title">Alterar papel de acesso</h2><button id="admin-role-close" type="button" aria-label="Fechar alteração de papel">×</button></div>
