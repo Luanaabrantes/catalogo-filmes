@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('./database');
+const listarFavoritos = require('./listarFavoritos');
 const registrarEventoAuditoria = require('./auditoria');
 const verificarAutenticacao = require('./middlewareAuth');
 
@@ -13,21 +14,7 @@ const router = express.Router();
 router.get('/', verificarAutenticacao, async (req, res) => {
     try {
 
-        const [favoritos] = await db.execute(
-            `
-            SELECT tmdb_movie_id
-            FROM favoritos
-            WHERE usuario_id = ?
-            ORDER BY criado_em DESC
-            `,
-            [req.usuario.id]
-        );
-
-        res.json({
-            favoritos: favoritos.map(
-                favorito => favorito.tmdb_movie_id
-            )
-        });
+        res.json({ favoritos: await listarFavoritos(req.usuario.id) });
 
     } catch (erro) {
 

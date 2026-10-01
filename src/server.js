@@ -80,6 +80,7 @@ app.use(
 
 app.use('/api/logs', logsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/perfil', require('./perfil'));
 
 
 // ========================================
