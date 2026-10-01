@@ -16,6 +16,12 @@ services:
 
       TMDB_TOKEN: ${TMDB_TOKEN}
 
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: 'false'
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Defina MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-perfil-fotos}
       AUTH_SERVICE_URL: http://auth-service:3001
       LOG_SERVICE_URL: http://log-service:3002
 
@@ -69,6 +75,25 @@ services:
       - catalogo-network
 
 
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Defina MINIO_SECRET_KEY}
+    volumes:
+      - minio-data:/data
+    expose:
+      - '9000'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - catalogo-network
+
   redis:
     image: redis:7.4-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -116,4 +141,5 @@ networks:
         - subnet: 10.88.0.0/24
 
 volumes:
+  minio-data:
   audit-redis-data:
