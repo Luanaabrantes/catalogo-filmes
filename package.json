@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js auth-service/test/*.test.js log-service/test/consulta.js"
   },
   "keywords": [],
   "author": "",
