@@ -410,6 +410,7 @@ const acoesAuditoria = {
     LOGIN: ['Login', 'login'], LOGOUT: ['Logout', 'neutral'],
     FILME_FAVORITADO: ['Filme favoritado', 'info'], FILME_DESFAVORITADO: ['Filme desfavoritado', 'info'],
     COMENTARIO_CRIADO: ['Comentário criado', 'info'], COMENTARIO_APAGADO: ['Comentário apagado', 'warning'],
+    PERFIL_ATUALIZADO: ['Perfil atualizado', 'info'], FOTO_PERFIL_ATUALIZADA: ['Foto de perfil atualizada', 'info'],
     ACAO_NEGADA: ['Ação negada', 'security'], ROLE_ALTERADA: ['Papel alterado', 'role']
 };
 const camposAuditoria = {
