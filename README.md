@@ -14,6 +14,7 @@ Aplicação acadêmica desenvolvida para a disciplina **Introdução à Computa�
 - Autorização RBAC para ações administrativas, incluindo moderação de comentários, auditoria e gerenciamento de papéis.
 - Painel administrativo com Visão geral, Auditoria e Usuários.
 - Registro de eventos em um Redis Stream pelo serviço dedicado `log-service`.
+- Perfil com foto no MinIO, bio e favoritos, com edição exclusiva pelo proprietário.
 
 ## Arquitetura atual
 
@@ -23,6 +24,7 @@ Navegador
     ▼
 Catálogo / Express :3000 ───────► auth-service :3001 ───────► MariaDB
     │                                  │                         (externo ao Compose)
+    ├──► MinIO :9000 (fotos; volume minio-data)
     │                                  └──── POST /eventos ──┐
     └──────────────────── POST /eventos ────────────────────┤
                                                             ▼
@@ -32,7 +34,7 @@ Catálogo / Express :3000 ───────► auth-service :3001 ───�
                                                    Redis Stream :6379
 ```
 
-O navegador acessa somente o catálogo. `auth-service`, `log-service` e Redis não publicam portas no host: a comunicação entre os microsserviços ocorre na rede Docker `catalogo-network`. O `log-service` é o único componente que acessa Redis; catálogo e `auth-service` enviam eventos para ele por HTTP.
+O navegador acessa somente o catálogo. `auth-service`, `log-service`, Redis e MinIO não publicam portas no host: a comunicação entre os microsserviços ocorre na rede Docker `catalogo-network`. O `log-service` é o único componente que acessa Redis; catálogo e `auth-service` enviam eventos para ele por HTTP.
 
 O MariaDB continua fornecendo os dados de negócio e autenticação, mas é uma dependência externa: não há serviço MariaDB definido nos Compose deste projeto.
 
@@ -42,6 +44,7 @@ O MariaDB continua fornecendo os dados de negócio e autenticação, mas é uma 
 | `auth-service` | Cadastro, autenticação, validação da sessão, papel atual, recuperação de senha e gestão administrativa de usuários | Interno, `3001` |
 | `log-service` | Validação, gravação e consulta de eventos de auditoria | Interno, `3002` |
 | `redis` | Persistência do Stream `auditoria` | Interno, `6379` |
+| `minio` | Fotos de perfil | Interno, `9000`; leitura intermediada pelo catálogo |
 
 Não é necessário expor `3001`, `3002` ou `6379` ao host.
 
@@ -53,7 +56,7 @@ Não é necessário expor `3001`, `3002` ou `6379` ao host.
 
 ## Serviços e Docker Compose
 
-O Compose local é `docker-compose.yml`; para produção no Portainer, use `docker-compose.portainer.yml`. Ambos definem `catalogo`, `auth-service`, `log-service` e `redis` na mesma rede `catalogo-network`.
+O Compose local é `docker-compose.yml`; para produção no Portainer, use `docker-compose.portainer.yml`. Ambos definem `catalogo`, `auth-service`, `log-service`, `redis` e `minio` na mesma rede `catalogo-network`.
 
 No ambiente local, apenas o catálogo publica `3000:3000`. No Compose do Portainer, ele publica `8216:3000`, usa `NODE_ENV=production` e recebe configuração por variáveis do ambiente do Portainer: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `TMDB_TOKEN`, `JWT_SECRET` e `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`. `CATALOGO_URL` aponta para a aplicação publicada. Esse arquivo também preserva a configuração DNS do `auth-service` e a rede IPAM existente (`10.88.0.0/24`). Valores secretos não são gravados no Compose nem devem ser colocados no Git.
 
@@ -65,7 +68,7 @@ LOG_SERVICE_URL=http://log-service:3002
 REDIS_URL=redis://redis:6379
 ```
 
-Redis usa a imagem `redis:7.4-alpine`, inicia com AOF (`--appendonly yes`) e persiste dados no volume `audit-redis-data`; o volume precisa ser preservado para manter os dados entre recriações do container. O healthcheck executa `redis-cli ping`; o `log-service` aguarda Redis saudável e também possui healthcheck em `/health`. No Compose do Portainer, os quatro serviços usam `restart: unless-stopped`.
+Redis usa a imagem `redis:7.4-alpine`, inicia com AOF (`--appendonly yes`) e persiste dados no volume `audit-redis-data`; o volume precisa ser preservado para manter os dados entre recriações do container. O healthcheck executa `redis-cli ping`; o `log-service` aguarda Redis saudável e também possui healthcheck em `/health`. No Compose do Portainer, os cinco serviços usam `restart: unless-stopped`.
 
 O Compose não define container para MariaDB: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME` devem apontar para a instância externa configurada no ambiente. Da mesma forma, TMDB, JWT e SMTP são configurados por variáveis de ambiente.
 
@@ -328,9 +331,135 @@ A evidência visual da consulta dos logs pelo painel administrativo será adicio
 ![Consulta dos logs de auditoria realizada como administrador](docs/evidencias/atividade-5-logs-admin.png)
 -->
 
+
+## Atividade 6 — Upload e perfil de usuário
+
+A página `/perfil.html`, acessível por **Meu perfil**, apresenta nome, foto, bio e favoritos. Para consultar outro perfil autenticado, use `/perfil.html?id=ID`. A edição aparece somente no próprio perfil; o backend também verifica essa regra.
+
+> A imagem não é armazenada no MariaDB. O arquivo binário é persistido no MinIO e o MariaDB mantém apenas a chave/referência do objeto.
+
+### Estrutura e execução
+
+A migração `database/migracao-atividade6.sql` cria somente `perfis`, com `usuario_id` (chave primária e estrangeira para `usuarios.id`, com exclusão em cascata), `bio VARCHAR(300)` e `foto_chave VARCHAR(500)`. Usa `CREATE TABLE IF NOT EXISTS`, preserva os dados e não recria tabelas anteriores. Favoritos reutilizam a tabela existente e seus IDs do TMDB; os dados visuais dos filmes não são duplicados no MariaDB.
+
+O Compose não aplica essa migração automaticamente. Aplique-a ao banco configurado antes de consultar o perfil. Com o catálogo ativo, no PowerShell:
+
+```powershell
+Get-Content database/migracao-atividade6.sql -Raw | docker compose exec -T catalogo node -e "const db=require('./src/database');let sql='';process.stdin.on('data',c=>sql+=c);process.stdin.on('end',async()=>{try{await db.query(sql);console.log('Migração aplicada.')}catch(e){console.error(e.code);process.exitCode=1}finally{await db.end()}})"
+```
+
+Confirme com `SHOW TABLES LIKE 'perfis';` e `DESCRIBE perfis;`. No Portainer, aplique a migração ao banco correspondente e configure as variáveis abaixo.
+
+| Variável | Uso |
+|---|---|
+| `MINIO_ENDPOINT` | Host; no Compose, `minio` |
+| `MINIO_PORT` | Porta interna; no Compose, `9000` |
+| `MINIO_USE_SSL` | TLS entre backend e armazenamento; `false` na rede interna configurada |
+| `MINIO_ACCESS_KEY` | Credencial fornecida no ambiente, nunca no frontend |
+| `MINIO_SECRET_KEY` | Segredo fornecido no ambiente, nunca no Git |
+| `MINIO_BUCKET` | Bucket dedicado; padrão `perfil-fotos` |
+
+Use `.env.example` como referência. Os Compose fixam o endereço interno do MinIO. O volume `minio-data`, montado em `/data`, mantém os arquivos entre reinicializações/recriações. Preserve esse volume e `audit-redis-data`; não use `down -v` para uma simples atualização.
+
+`minio/Dockerfile` compila o código oficial do MinIO na versão fixada no arquivo. A primeira construção pode demorar. O healthcheck consulta `/minio/health/live`; o console não é publicado. Suba com `docker compose up -d --build` e confira os cinco serviços com `docker compose ps`.
+
+### Upload, propriedade e auditoria
+
+O bucket é único para todas as fotos. As chaves seguem `perfis/{usuarioId}/{uuid}.jpg` (ou `.png`/`.webp`), sem usar o nome original enviado. O backend verifica/cria o bucket no primeiro upload.
+
+1. Validar sessão e propriedade a partir de `req.usuario.id`.
+2. Receber um arquivo no campo `foto`, por `multipart/form-data`: JPEG, PNG ou WebP, até **5 MB** (5 × 1024 × 1024 bytes).
+3. Verificar MIME e decodificar com Sharp, sem confiar somente na extensão; reencodar e remover metadados.
+4. Enviar o objeto ao MinIO e persistir sua chave no MariaDB em transação.
+5. Somente após o commit, remover a foto anterior. Falha na limpeza não invalida a foto nova.
+
+Falha no banco antes do commit provoca rollback e tentativa de limpeza do objeto novo. Se o resultado do commit for incerto, ambas as imagens são preservadas para evitar apagar uma referência válida. **Alterar foto** abre o seletor oculto e inicia o upload após a seleção, com validações e mensagens de andamento/resultado.
+
+| Método e endpoint | Regra |
+|---|---|
+| `GET /api/perfil/me` | Perfil da sessão e favoritos |
+| `GET /api/perfil/:id` | Consulta por usuário autenticado |
+| `PATCH /api/perfil/:id` | Altera somente a própria bio; JSON com `bio`, até 300 caracteres |
+| `POST /api/perfil/:id/foto` | Altera somente a própria foto; multipart com campo `foto` |
+| `GET /api/perfil/fotos/:usuarioId/:arquivo` | Leitura pública da imagem, intermediada pelo catálogo |
+
+A consulta retorna ID, nome, bio, `foto_chave`, `foto_url`, favoritos e indicação de propriedade. O backend compara `Number(req.params.id)` com `Number(req.usuario.id)` e ignora identidade enviada no corpo. Mesmo um administrador não pode editar perfil alheio. Sem sessão: `401`; tentativa alheia: `403`; arquivo/bio inválido: `400`; tamanho excedido: `413`; falha de infraestrutura: `503`.
+
+A auditoria existente registra `PERFIL_ATUALIZADO`, `FOTO_PERFIL_ATUALIZADA` e `ACAO_NEGADA` para tentativa alheia, com recurso `PERFIL`, operação e ID alvo quando pertinente. Não envia imagem, bio, senha, JWT, cookie ou credenciais. Mantém o melhor esforço do `log-service`.
+
+### Leitura pública e alternativa pré-assinada
+
+O bucket permite somente `s3:GetObject` público no prefixo `perfis/`. A escrita permanece restrita ao backend. A URL estável usa `/api/perfil/fotos/...`; o catálogo lê o objeto anonimamente na rede interna, sem entregar credenciais ao navegador.
+
+| Estratégia | Vantagens | Limitações |
+|---|---|---|
+| Bucket com leitura pública (adotado) | Simples, URL estável e fácil uso no frontend; adequado a fotos públicas | Qualquer pessoa que conheça a URL pode acessar a imagem |
+| URL pré-assinada | Maior controle e expiração; adequada a arquivos privados | Mais complexidade e URLs precisam ser regeneradas; desnecessária para fotos públicas neste projeto |
+
+### Arquivos e testes da Atividade 6
+
+- Interface: `public/perfil.html`, `public/perfil.js` e estilos em `public/style.css`.
+- Backend: `src/perfil.js`, `src/fotoPerfil.js`, `src/minio.js` e consulta compartilhada em `src/listarFavoritos.js`.
+- Infraestrutura: `database/migracao-atividade6.sql`, `minio/Dockerfile`, ambos os Compose e `.env.example`.
+- Testes: `test/perfil.test.js`, `test/minio.test.js` e roteiro integrado `test/perfil-integracao.js`.
+
+Com as dependências instaladas na raiz, em `auth-service` e em `log-service`, execute `npm test`. Nesta entrega: **49 testes aprovados, 0 falhas**, incluindo os testes anteriores. Cobrem autenticação, propriedade, favoritos do usuário correto, upload válido/inválido, limite de tamanho, falhas de MinIO/banco e auditoria, usando mocks quando apropriado. O roteiro integrado exige ambiente descartável com banco `catalogo_qa` e serviços de teste; não deve ser executado no banco de produção.
+
+## Demonstração da Atividade 6
+
+### Perfil
+
+1. Fazer login e acessar **Meu perfil**.
+2. Usar **Editar perfil** para salvar uma bio e **Alterar foto** para enviar uma imagem válida.
+3. Favoritar filmes no catálogo e retornar ao perfil.
+4. Confirmar foto realmente carregada, bio e pôsteres dos favoritos; capturar a página.
+5. Para conferir persistência, executar `docker compose restart minio` e recarregar a página quando o serviço estiver saudável.
+
+### Tentativa de editar outro usuário
+
+1. Autenticar como usuário A e identificar o ID real de B (na conta B ou no painel de usuários como administrador).
+2. No console do navegador da sessão A, executar e informar o ID de B:
+
+```javascript
+const idAlvo = Number(prompt('ID do outro usuário'));
+const resposta = await fetch('/api/perfil/' + idAlvo, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ bio: 'Tentativa de edição de outro perfil' })
+});
+console.log(resposta.status, await resposta.json());
+```
+
+3. Confirmar `403 Forbidden` e `Você só pode editar o próprio perfil.`; capturar o console ou a requisição na aba Network.
+4. Opcionalmente, autenticar como administrador, abrir **Auditoria**, atualizar e filtrar `ACAO_NEGADA`. Conferir recurso `PERFIL`, alvo e operação `ATUALIZAR_BIO`.
+
+### Evidência — perfil com foto, bio e favoritos
+
+![Perfil com foto carregada pelo MinIO, bio e filmes favoritos](docs/evidencias/atividade-6-perfil.png)
+
+### Evidência — tentativa recusada de editar outro perfil
+
+![Tentativa de editar outro perfil recusada com 403 Forbidden](docs/evidencias/atividade-6-perfil-403.png)
+
+### Evidências anteriores — autenticação e recuperação de senha
+
+<details>
+<summary>Ver evidências preservadas das atividades anteriores</summary>
+
+![Tela de login](docs/evidencias/tela-login.png)
+![Recuperar senha](docs/evidencias/recuperar-senha.png)
+![Envio da solicitação de recuperação](docs/evidencias/envio-recuperacao.png)
+![Confirmação de e-mail enviado](docs/evidencias/email-enviado.png)
+![E-mail recebido no Mailtrap](docs/evidencias/email-mailtrap.png)
+![Redefinição de senha](docs/evidencias/redefinir-senha.png)
+![Senha redefinida](docs/evidencias/senha-redefinida.png)
+![Link de recuperação já utilizado](docs/evidencias/link-utilizado.png)
+
+</details>
+
 ## Tecnologias
 
-Node.js, Express, JavaScript, HTML, CSS, MariaDB, MySQL2, `bcryptjs`, `jsonwebtoken`, Nodemailer, API TMDB, Redis, Redis Streams, Docker e Docker Compose.
+Node.js, Express, JavaScript, HTML, CSS, MariaDB, MySQL2, `bcryptjs`, `jsonwebtoken`, Nodemailer, API TMDB, Redis, Redis Streams, MinIO, Multer, Sharp, Docker e Docker Compose.
 
 ## Links
 
