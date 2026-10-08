@@ -614,7 +614,7 @@ node scripts/validar-observabilidade-docker.js
 
 Não execute novamente o preparador com os volumes do laboratório já inicializados: ele gera outra senha. Para reutilizar a stack, mantenha o arquivo de ambiente original. O script aguarda todos os estados healthy, consulta `/health` e `/live`, para **somente o Redis do laboratório**, confirma `unhealthy` e HTTP 503, restaura o Redis e confirma recuperação sem reiniciar o log-service. Também consulta erros reais e verifica as métricas por template. O SMTP é real no laboratório, mas é Mailpit; não é uma validação do Mailtrap de produção.
 
-### Capturar as evidências pendentes
+### Evidências e reprodução da validação
 
 Use somente o projeto `observabilidade-qa`. Em PowerShell, defina:
 
@@ -623,8 +623,8 @@ $qaCompose = @('--env-file', 'tmp/observabilidade/.env', '-p', 'observabilidade-
 docker compose @qaCompose ps
 ```
 
-1. Aguarde os serviços da aplicação, Redis, MinIO e MariaDB `healthy`. Capture a listagem sem abrir variáveis de ambiente: `docs/evidencias/observabilidade-healthy.png`.
-2. Execute os comandos abaixo, aguarde aproximadamente 20 segundos e confirme `unhealthy` no log-service. Capture a listagem e HTTP 503 como `docs/evidencias/observabilidade-redis-unhealthy.png`:
+1. Aguarde os serviços da aplicação, Redis, MinIO e MariaDB `healthy`. Capture a listagem sem abrir variáveis de ambiente: `docs/prints/observabilidade-healthy.png`.
+2. Execute os comandos abaixo, aguarde aproximadamente 20 segundos e confirme `unhealthy` no log-service. Capture a listagem e HTTP 503 como `docs/prints/observabilidade-redis-unhealthy.png`:
 
 ```powershell
 docker compose @qaCompose stop -t 3 redis
@@ -634,22 +634,42 @@ docker compose @qaCompose exec -T log-service node -e "fetch('http://127.0.0.1:3
 docker compose @qaCompose start redis
 ```
 
-3. Aguarde a recuperação automática para `healthy` e execute os comandos abaixo. Capture contador e histograma como `docs/evidencias/observabilidade-metrics.png`:
+3. Aguarde a recuperação automática para `healthy` e execute os comandos abaixo. Capture contador e histograma como `docs/prints/observabilidade-metrics.png`:
 
 ```powershell
 docker compose @qaCompose exec -T catalogo node -e "Promise.all(['/api/perfil/123','/api/perfil/456','/rota-inexistente'].map(p => fetch('http://127.0.0.1:3000'+p))).then(() => console.log('Requisições de teste concluídas'))"
 docker compose @qaCompose exec -T catalogo node -e "fetch('http://127.0.0.1:3000/metrics').then(async r => console.log(r.status, await r.text()))"
 ```
 
-Para encerrar somente o laboratório, execute `docker compose @qaCompose down` (sem `-v`, preservando seus dados). Os três prints permanecem **pendentes** e só serão inseridos no README quando os arquivos existirem. Prometheus/Grafana e implantação em produção não foram realizados.
+Para encerrar somente o laboratório, execute `docker compose @qaCompose down` (sem `-v`, preservando seus dados). As quatro capturas da validação estão apresentadas abaixo. Prometheus/Grafana e implantação em produção não foram realizados.
 
-Validação concluída no laboratório: **56 testes automatizados aprovados, zero falhas**, duas especificações OpenAPI válidas e quatro imagens construídas. Catálogo, auth-service, log-service, MariaDB, Redis e MinIO ficaram healthy. Ao parar somente o Redis, o log-service passou a unhealthy, `/health` retornou 503 e `/live` retornou 200; o catálogo continuou pronto. Após restaurar o Redis, o log-service voltou a healthy sem reinício, confirmado pela data de início do mesmo container. As métricas reais registraram contador, histograma, respostas 401/404 e o template `/api/perfil/:id`, sem IDs nos labels. Os quatro testes novos também verificam 403, 500, JSON inválido, timeout e ausência de detalhes sensíveis. Os prints ainda não foram capturados.
+Validação concluída no laboratório: **56 testes automatizados aprovados, zero falhas**, duas especificações OpenAPI válidas e quatro imagens construídas. Catálogo, auth-service, log-service, MariaDB, Redis e MinIO ficaram healthy. Ao parar somente o Redis, o log-service passou a unhealthy, `/health` retornou 503 e `/live` retornou 200; o catálogo continuou pronto. Após restaurar o Redis, o log-service voltou a healthy sem reinício, confirmado pela data de início do mesmo container. As métricas reais registraram contador, histograma, respostas 401/404 e o template `/api/perfil/:id`, sem IDs nos labels. Os quatro testes novos também verificam 403, 500, JSON inválido, timeout e ausência de detalhes sensíveis. As capturas documentam os estados de saúde e as métricas do laboratório isolado.
+
+Implementação: [commit d672301](https://github.com/Luanaabrantes/catalogo-filmes/commit/d672301f5defa185e96ba3118f2605ca12057cd2), em 07/10/2026 às 23:15:00 (UTC−03:00). [Execução aprovada no GitHub Actions](https://github.com/Luanaabrantes/catalogo-filmes/actions/runs/37716954218).
+
+![Serviços do laboratório com health checks em estado healthy.](docs/prints/observabilidade-healthy.png)
+
+Serviços do laboratório com health checks em estado healthy.
+
+![Redis interrompido: log-service unhealthy, /health com HTTP 503 e /live com HTTP 200.](docs/prints/observabilidade-redis-unhealthy.png)
+
+Redis interrompido: log-service unhealthy, /health com HTTP 503 e /live com HTTP 200.
+
+![Recuperação do log-service para healthy após restaurar o Redis, sem reiniciar o serviço de logs.](docs/prints/observabilidade-recuperacao.png)
+
+Recuperação do log-service para healthy após restaurar o Redis, sem reiniciar o serviço de logs.
+
+![Endpoint /metrics com HTTP 200, contador de requisições e histograma de latência por método, rota e status.](docs/prints/observabilidade-metrics.png)
+
+Endpoint /metrics com HTTP 200, contador de requisições e histograma de latência por método, rota e status.
 
 ## Tecnologias
 
 Node.js, Express, JavaScript, HTML, CSS, MariaDB, MySQL2, `bcryptjs`, `jsonwebtoken`, Nodemailer, API TMDB, Redis, Redis Streams, MinIO, Multer, Sharp, Docker e Docker Compose.
 
 ## Links
+
+- **Relatório P1:** [PDF final — Luana Abrantes](docs/P1_ISW055_Luana_Abrantes.pdf)
 
 - **Aplicação:** [https://luana-abrantes-isw055.lapps.studio/](https://luana-abrantes-isw055.lapps.studio/)
 - **Repositório:** [https://github.com/Luanaabrantes/catalogo-filmes](https://github.com/Luanaabrantes/catalogo-filmes)
