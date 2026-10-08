@@ -275,7 +275,7 @@ docker compose ps
 
 A aplicação local fica em [http://localhost:3000](http://localhost:3000). Apenas o serviço `catalogo` deve mostrar porta publicada no host; os outros serviços ficam disponíveis pela rede interna.
 
-Para executar no Portainer, configure as variáveis de ambiente exigidas em `docker-compose.portainer.yml` e use esse arquivo como Compose da stack. O catálogo será publicado na porta `8216` do host. Não configure mapeamentos de host para as portas 3001, 3002 ou 6379.
+Para executar no Portainer, mantenha `docker-compose.portainer.yml` como caminho do Compose da stack e configure as variáveis de ambiente exigidas, incluindo `IMAGE_TAG=sha-<hash completo do commit aprovado no CI/CD>`. Esse arquivo utiliza as imagens publicadas no GHCR, sem build local; configure o acesso ao registro conforme a seção CI/CD. O catálogo será publicado na porta `8216` do host. Não configure mapeamentos de host para as portas 3001, 3002 ou 6379.
 
 Verificações internas opcionais:
 
@@ -568,7 +568,7 @@ O pipeline autentica com `secrets.GITHUB_TOKEN`, fornecido automaticamente pelo 
 
 Confira a visibilidade dos quatro pacotes em GitHub → Packages. Para pull sem autenticação, torne-os públicos nas configurações dos pacotes, se desejado. Se permanecerem privados, configure o registro `ghcr.io` no Portainer com uma credencial de leitura autorizada (`read:packages`), sem inseri-la no Compose ou no repositório.
 
-Use [docker-compose.cicd.yml](docker-compose.cicd.yml) na **mesma stack existente**, mantendo o nome da stack e seus volumes. Defina `IMAGE_TAG=sha-<hash completo do commit aprovado>` nas variáveis do Portainer. O Compose exige essa variável; confira que o valor começa com `sha-` e contém os 40 caracteres do hash. Preserve os valores existentes de banco, TMDB, JWT, SMTP e MinIO, fornecidos somente pelo Portainer. Não remova a stack ou os volumes `minio-data` e `audit-redis-data`: eles preservam as fotos e os eventos. A porta pública permanece `8216:3000`; serviços internos, rede, healthchecks e Redis com AOF permanecem iguais ao Compose do Portainer.
+Use [docker-compose.portainer.yml](docker-compose.portainer.yml) na **mesma stack existente**, mantendo o caminho já configurado no Portainer, o nome da stack e seus volumes. Esse arquivo utiliza as imagens GHCR, sem build local; `docker-compose.cicd.yml` mantém a mesma configuração como referência e não precisa substituir o caminho da stack. Defina `IMAGE_TAG=sha-<hash completo do commit aprovado>` nas variáveis do Portainer. O Compose exige essa variável; confira que o valor começa com `sha-` e contém os 40 caracteres do hash. Preserve os valores existentes de banco, TMDB, JWT, SMTP e MinIO, fornecidos somente pelo Portainer. Não remova a stack ou os volumes `minio-data` e `audit-redis-data`: eles preservam as fotos e os eventos. A porta pública permanece `8216:3000`; serviços internos, rede, healthchecks e Redis com AOF permanecem iguais ao Compose do Portainer.
 
 Após conferir a execução verde e o acesso às quatro imagens, atualize manualmente a stack solicitando o pull das imagens com a tag SHA. Verifique os serviços e o funcionamento da aplicação. Para rollback, restaure `IMAGE_TAG` para uma tag SHA anterior aprovada e atualize a mesma stack, preservando os volumes e as variáveis. Rollback de imagem não desfaz alterações nos dados.
 

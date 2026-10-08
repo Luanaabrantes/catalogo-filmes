@@ -1,8 +1,6 @@
 services:
   catalogo:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/luanaabrantes/catalogo-filmes-catalogo:${IMAGE_TAG:?Defina IMAGE_TAG como sha-hash completo do commit}
 
     ports:
       - "8216:3000"
@@ -38,9 +36,7 @@ services:
 
 
   auth-service:
-    build:
-      context: ./auth-service
-      dockerfile: Dockerfile
+    image: ghcr.io/luanaabrantes/catalogo-filmes-auth-service:${IMAGE_TAG:?Defina IMAGE_TAG como sha-hash completo do commit}
 
     expose:
       - "3001"
@@ -76,9 +72,7 @@ services:
 
 
   minio:
-    build:
-      context: ./minio
-      dockerfile: Dockerfile
+    image: ghcr.io/luanaabrantes/catalogo-filmes-minio:${IMAGE_TAG:?Defina IMAGE_TAG como sha-hash completo do commit}
     command: server /data --console-address ':9001'
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY}
@@ -113,9 +107,7 @@ services:
       - catalogo-network
 
   log-service:
-    build:
-      context: ./log-service
-      dockerfile: Dockerfile
+    image: ghcr.io/luanaabrantes/catalogo-filmes-log-service:${IMAGE_TAG:?Defina IMAGE_TAG como sha-hash completo do commit}
     environment:
       PORT: 3002
       REDIS_URL: redis://redis:6379
