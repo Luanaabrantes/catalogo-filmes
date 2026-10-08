@@ -485,7 +485,10 @@ Com a porta padrão 3000:
 - [Swagger do auth-service](http://localhost:3000/apidocs/auth/).
 - Especificações servidas: [catálogo JSON](http://localhost:3000/openapi/catalogo.json) e [auth-service JSON](http://localhost:3000/openapi/auth.json).
 
-É possível escolher outra porta com `PORT`. Na validação desta atividade foi usado `PORT=3010`, com o catálogo em `http://localhost:3010/apidocs/` e o auth-service documentado em `http://localhost:3010/apidocs/auth/`. A especificação pública usa a mesma origem (`servers: /`), sem fixar localhost para produção. As páginas foram verificadas localmente; **não houve deploy nem confirmação desses caminhos no servidor publicado**.
+É possível escolher outra porta com `PORT`. Na validação desta atividade foi usado `PORT=3010`, com o catálogo em `http://localhost:3010/apidocs/` e o auth-service documentado em `http://localhost:3010/apidocs/auth/`. A especificação pública usa a mesma origem (`servers: /`), sem fixar localhost para produção. A implementação está disponível no ambiente publicado:
+
+- [Swagger do catálogo](https://luana-abrantes-isw055.lapps.studio/apidocs/).
+- [Swagger do auth-service](https://luana-abrantes-isw055.lapps.studio/apidocs/auth/).
 
 O `.dockerignore` permite copiar somente os arquivos JavaScript de `auth-service/src` para a imagem do catálogo, para leitura das anotações durante a geração da documentação. Não copia o `.env`, as dependências ou outros arquivos do auth-service e não executa esse serviço dentro do catálogo.
 
@@ -499,7 +502,7 @@ Para uma demonstração sem dados sensíveis e sem alterar registros:
 2. Expanda **Autenticação → GET /api/auth/me**.
 3. Clique em **Try it out → Execute**.
 4. Confira em **Server response** o HTTP **401** e o corpo `{"mensagem":"Usuário não autenticado."}`. Esse é um retorno real esperado para sessão ausente; não representa um login bem-sucedido.
-5. Com uma sessão local válida, a mesma consulta retorna **200** com `usuario` (`id`, `nome`, `email`, `role`). Esse cenário requer auth-service e banco local disponíveis e não foi executado na captura abaixo.
+5. Com uma sessão local válida, a mesma consulta retorna **200** com `usuario` (`id`, `nome`, `email`, `role`). Esse cenário requer auth-service e banco local disponíveis.
 
 O upload é `POST /api/perfil/{id}/foto`, `multipart/form-data`, campo único **`foto`**, JPEG/PNG/WebP estático de até **5 MiB** e **25 megapixels**. A bio aceita até 300 pontos de código Unicode após trim. A leitura de outro perfil é permitida a usuários autenticados; edição e upload exigem o proprietário, inclusive para administradores. O papel comum real é `usuario`; as operações administrativas exigem `admin`. Falta de autenticação é **401**; falta de permissão é **403**.
 
@@ -528,11 +531,19 @@ docker compose exec catalogo node -e "fetch('http://auth-service:3001/health').t
 
 ### Evidência e validação
 
-Foram executados os testes existentes, a validação OpenAPI e a comparação exata das especificações com as rotas reais dos dois serviços. A evidência abaixo registra **Try it out → Execute** de `GET /api/auth/me` no catálogo local, com HTTP **401** e o corpo real da resposta. A execução não consultou nem alterou dados de produção.
+Foram executados os testes existentes, a validação OpenAPI e a comparação exata das especificações com as rotas reais dos dois serviços. No ambiente publicado, foi realizada a chamada **GET `/api/filmes`** pelo **Try it out → Execute** do Swagger do catálogo, com resposta **HTTP 200** e os dados dos filmes. O teste pelo navegador foi demonstrado na API pública do catálogo. O auth-service permanece na rede interna Docker, com Try it out desativado na página de suas rotas internas.
 
 A execução final de `npm test` aprovou **52 testes** (49 existentes e 3 de documentação). As duas especificações passaram no validador OpenAPI. A imagem Docker local também foi testada em um contêiner temporário sem rede externa nem portas publicadas: os dois Swaggers e os dois JSONs retornaram 200, e a consulta de sessão sem cookie retornou 401. Nenhum `.env` foi copiado para a imagem. O teste de sessão autenticada com todos os serviços e banco local permanece para conferência em um ambiente completo. O `npm audit` reportou sete avisos em dependências já presentes no lockfile anterior (cinco moderados, um alto e um crítico), sem atualização dessas dependências nesta atividade.
 
-![Swagger UI com GET /api/auth/me executado e resposta real 401 para sessão ausente](docs/evidencias/atividade-extra-swagger.png)
+![GET /api/filmes executado no Swagger publicado com HTTP 200](docs/evidencias/atividade-extra-swagger.png)
+
+Execução real do GET `/api/filmes` pelo Swagger do catálogo no ambiente publicado, com HTTP 200 e dados dos filmes.
+
+![Endpoints internos do auth-service documentados no Swagger](docs/evidencias/atividade-extra-swagger-auth.png)
+
+Documentação dos endpoints do auth-service, com Try it out desativado.
+
+Implementação registrada no [commit 780dd4f](https://github.com/Luanaabrantes/catalogo-filmes/commit/780dd4f37f3c13471a8e285176372c805753b593), em 07/10/2026 às 21:15:01 (UTC−03:00).
 
 Após mudar contratos ou schemas, execute novamente `npm run docs:generate`, `npm run docs:validate` e `npm test`. As verificações de documentação também detectam exportações desatualizadas e diferenças entre rotas documentadas e implementadas.
 
