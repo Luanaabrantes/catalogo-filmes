@@ -547,6 +547,37 @@ Implementação registrada no [commit 780dd4f](https://github.com/Luanaabrantes/
 
 Após mudar contratos ou schemas, execute novamente `npm run docs:generate`, `npm run docs:validate` e `npm test`. As verificações de documentação também detectam exportações desatualizadas e diferenças entre rotas documentadas e implementadas.
 
+## Atividade extra — CI/CD
+
+Atividade da disciplina ISW055, professor [@siriani](https://github.com/siriani). Modalidade inicial **quase automático**: testes, builds e publicação automáticos; atualização manual da stack no Portainer. A automação completa do deploy permanece pendente.
+
+O workflow [cicd.yml](.github/workflows/cicd.yml) executa em push e pull request. Instala as dependências com `npm ci` na raiz, no auth-service e no log-service, executa `npm test` e `npm run docs:validate`, constrói e verifica as quatro imagens. Uma falha impede o job de publicação. Somente push para `atividade-extra-cicd` publica no GHCR as mesmas imagens verificadas, sem reconstrução.
+
+Imagens publicadas pelo pipeline:
+
+- `ghcr.io/luanaabrantes/catalogo-filmes-catalogo`
+- `ghcr.io/luanaabrantes/catalogo-filmes-auth-service`
+- `ghcr.io/luanaabrantes/catalogo-filmes-log-service`
+- `ghcr.io/luanaabrantes/catalogo-filmes-minio`
+
+Cada imagem recebe `latest`, `sha-<hash completo do commit>` e o label `org.opencontainers.image.revision`. Para implantação e rollback, use a tag SHA correspondente à execução aprovada, evitando `latest`.
+
+### Portainer e acesso ao GHCR
+
+O pipeline autentica com `secrets.GITHUB_TOKEN`, fornecido automaticamente pelo GitHub Actions, e usa `packages: write` somente no job de publicação. Esse token não é uma variável da aplicação nem deve ser copiado para o Portainer. Nenhuma credencial da aplicação é fornecida durante o build.
+
+Confira a visibilidade dos quatro pacotes em GitHub → Packages. Para pull sem autenticação, torne-os públicos nas configurações dos pacotes, se desejado. Se permanecerem privados, configure o registro `ghcr.io` no Portainer com uma credencial de leitura autorizada (`read:packages`), sem inseri-la no Compose ou no repositório.
+
+Use [docker-compose.cicd.yml](docker-compose.cicd.yml) na **mesma stack existente**, mantendo o nome da stack e seus volumes. Defina `IMAGE_TAG=sha-<hash completo do commit aprovado>` nas variáveis do Portainer. O Compose exige essa variável; confira que o valor começa com `sha-` e contém os 40 caracteres do hash. Preserve os valores existentes de banco, TMDB, JWT, SMTP e MinIO, fornecidos somente pelo Portainer. Não remova a stack ou os volumes `minio-data` e `audit-redis-data`: eles preservam as fotos e os eventos. A porta pública permanece `8216:3000`; serviços internos, rede, healthchecks e Redis com AOF permanecem iguais ao Compose do Portainer.
+
+Após conferir a execução verde e o acesso às quatro imagens, atualize manualmente a stack solicitando o pull das imagens com a tag SHA. Verifique os serviços e o funcionamento da aplicação. Para rollback, restaure `IMAGE_TAG` para uma tag SHA anterior aprovada e atualize a mesma stack, preservando os volumes e as variáveis. Rollback de imagem não desfaz alterações nos dados.
+
+### Validação e evidências
+
+A execução real do GitHub Actions será registrada após a conferência do pipeline. Nenhuma atualização do ambiente de produção foi realizada nesta etapa.
+
+Print do container no Portainer: **pendente**, arquivo previsto `docs/evidencias/atividade-extra-cicd-container.png`. A imagem será incluída somente após a atualização manual e sua captura. Deploy completamente automático: **pendente**.
+
 ## Tecnologias
 
 Node.js, Express, JavaScript, HTML, CSS, MariaDB, MySQL2, `bcryptjs`, `jsonwebtoken`, Nodemailer, API TMDB, Redis, Redis Streams, MinIO, Multer, Sharp, Docker e Docker Compose.
