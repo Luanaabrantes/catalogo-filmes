@@ -574,7 +574,7 @@ Após conferir a execução verde e o acesso às quatro imagens, atualize manual
 
 ### Validação e evidências
 
-A execução real do GitHub Actions será registrada após a conferência do pipeline. Nenhuma atualização do ambiente de produção foi realizada nesta etapa.
+A [execução 37709376462 do GitHub Actions](https://github.com/Luanaabrantes/catalogo-filmes/actions/runs/37709376462) concluiu os jobs de verificação e publicação com sucesso. Os 52 testes e a validação das duas especificações OpenAPI passaram; as quatro imagens foram construídas, verificadas e publicadas com `latest` e `sha-24abe30d9245ec177ea96343e5d6ee5eb4cf2bcb`. Essa tag identifica o commit validado nesta execução e pode ser usada no Portainer. Nenhuma atualização do ambiente de produção foi realizada nesta etapa.
 
 Print do container no Portainer: **pendente**, arquivo previsto `docs/evidencias/atividade-extra-cicd-container.png`. A imagem será incluída somente após a atualização manual e sua captura. Deploy completamente automático: **pendente**.
 
