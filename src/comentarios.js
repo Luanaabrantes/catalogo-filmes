@@ -11,6 +11,81 @@ const router = express.Router();
 // DO USUÁRIO LOGADO
 // ========================================
 
+/**
+ * @openapi
+ * /api/comentarios:
+ *   get:
+ *     tags:
+ *       - Comentários
+ *     summary: Listar comentários próprios
+ *     description: >-
+ *       Somente comentários do usuário autenticado; mesmo admin não lista comentários de outras contas. Ordem
+ *       criado_em DESC. Requer sessão autenticada (cookie HttpOnly token).
+ *     operationId: get_api_comentarios
+ *     security:
+ *       - sessao: []
+ *     responses:
+ *       '200':
+ *         description: Comentários
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 comentarios:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Comentario'
+ *               required:
+ *                 - comentarios
+ *       '401':
+ *         description: >-
+ *           Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário
+ *           inválido. / Usuário não encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Usuário não autenticado.
+ *               '1':
+ *                 value:
+ *                   mensagem: Token não informado.
+ *               '2':
+ *                 value:
+ *                   mensagem: Sessão inválida ou expirada.
+ *               '3':
+ *                 value:
+ *                   mensagem: Token com usuário inválido.
+ *               '4':
+ *                 value:
+ *                   mensagem: Usuário não encontrado.
+ *       '500':
+ *         description: Erro ao buscar comentários. / Erro interno do servidor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Erro ao buscar comentários.
+ *               '1':
+ *                 value:
+ *                   mensagem: Erro interno do servidor.
+ *       '503':
+ *         description: Serviço de autenticação indisponível.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Serviço de autenticação indisponível.
+ */
 router.get('/', verificarAutenticacao, async (req, res) => {
     try {
 
@@ -51,6 +126,100 @@ router.get('/', verificarAutenticacao, async (req, res) => {
 // DO USUÁRIO LOGADO
 // ========================================
 
+/**
+ * @openapi
+ * /api/comentarios/{movieId}:
+ *   get:
+ *     tags:
+ *       - Comentários
+ *     summary: Listar comentários próprios
+ *     description: >-
+ *       Somente comentários do usuário autenticado; mesmo admin não lista comentários de outras contas. Ordem
+ *       criado_em DESC. Requer sessão autenticada (cookie HttpOnly token).
+ *     operationId: get_api_comentarios_movieId
+ *     security:
+ *       - sessao: []
+ *     responses:
+ *       '200':
+ *         description: Comentários
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 comentarios:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Comentario'
+ *               required:
+ *                 - comentarios
+ *       '400':
+ *         description: ID do filme inválido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: ID do filme inválido.
+ *       '401':
+ *         description: >-
+ *           Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário
+ *           inválido. / Usuário não encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Usuário não autenticado.
+ *               '1':
+ *                 value:
+ *                   mensagem: Token não informado.
+ *               '2':
+ *                 value:
+ *                   mensagem: Sessão inválida ou expirada.
+ *               '3':
+ *                 value:
+ *                   mensagem: Token com usuário inválido.
+ *               '4':
+ *                 value:
+ *                   mensagem: Usuário não encontrado.
+ *       '500':
+ *         description: Erro ao buscar comentários. / Erro interno do servidor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Erro ao buscar comentários.
+ *               '1':
+ *                 value:
+ *                   mensagem: Erro interno do servidor.
+ *       '503':
+ *         description: Serviço de autenticação indisponível.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Serviço de autenticação indisponível.
+ *     parameters:
+ *       - name: movieId
+ *         in: path
+ *         required: true
+ *         description: Inteiro positivo.
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           example: 1
+ */
 router.get('/:movieId', verificarAutenticacao, async (req, res) => {
     try {
 
@@ -102,6 +271,130 @@ router.get('/:movieId', verificarAutenticacao, async (req, res) => {
 // CRIAR COMENTÁRIO
 // ========================================
 
+/**
+ * @openapi
+ * /api/comentarios/{movieId}:
+ *   post:
+ *     tags:
+ *       - Comentários
+ *     summary: Publicar comentário
+ *     description: >-
+ *       Texto é salvo após trim. Valor não string pode gerar 500, pois a implementação chama trim diretamente.
+ *       Requer sessão autenticada (cookie HttpOnly token).
+ *     operationId: post_api_comentarios_movieId
+ *     security:
+ *       - sessao: []
+ *     responses:
+ *       '201':
+ *         description: Comentário salvo com sucesso!
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 mensagem:
+ *                   type: string
+ *                 comentario:
+ *                   $ref: '#/components/schemas/Comentario'
+ *               required:
+ *                 - mensagem
+ *                 - comentario
+ *       '400':
+ *         description: >-
+ *           ID do filme inválido. / O comentário não pode estar vazio. JSON malformado ou corpo inválido para
+ *           express.json (resposta padrão HTML do Express).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: ID do filme inválido.
+ *               '1':
+ *                 value:
+ *                   mensagem: O comentário não pode estar vazio.
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '401':
+ *         description: >-
+ *           Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário
+ *           inválido. / Usuário não encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Usuário não autenticado.
+ *               '1':
+ *                 value:
+ *                   mensagem: Token não informado.
+ *               '2':
+ *                 value:
+ *                   mensagem: Sessão inválida ou expirada.
+ *               '3':
+ *                 value:
+ *                   mensagem: Token com usuário inválido.
+ *               '4':
+ *                 value:
+ *                   mensagem: Usuário não encontrado.
+ *       '413':
+ *         description: Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '415':
+ *         description: Charset ou Content-Encoding não suportado pelo parser (HTML do Express).
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '500':
+ *         description: Erro ao salvar comentário. / Erro interno do servidor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Erro ao salvar comentário.
+ *               '1':
+ *                 value:
+ *                   mensagem: Erro interno do servidor.
+ *       '503':
+ *         description: Serviço de autenticação indisponível.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Serviço de autenticação indisponível.
+ *     parameters:
+ *       - name: movieId
+ *         in: path
+ *         required: true
+ *         description: Inteiro positivo.
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           example: 1
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/NovoComentario'
+ */
 router.post('/:movieId', verificarAutenticacao, async (req, res) => {
     try {
 
@@ -170,6 +463,115 @@ router.post('/:movieId', verificarAutenticacao, async (req, res) => {
 // EXCLUIR COMENTÁRIO
 // ========================================
 
+/**
+ * @openapi
+ * /api/comentarios/{id}:
+ *   delete:
+ *     tags:
+ *       - Comentários
+ *     summary: Excluir comentário
+ *     description: >-
+ *       Somente autor ou admin. A permissão é conferida no backend; negação gera ACAO_NEGADA. Requer sessão
+ *       autenticada (cookie HttpOnly token).
+ *     operationId: delete_api_comentarios_id
+ *     security:
+ *       - sessao: []
+ *     responses:
+ *       '200':
+ *         description: Comentário removido com sucesso!
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             example:
+ *               mensagem: Comentário removido com sucesso!
+ *       '400':
+ *         description: ID do comentário inválido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: ID do comentário inválido.
+ *       '401':
+ *         description: >-
+ *           Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário
+ *           inválido. / Usuário não encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Usuário não autenticado.
+ *               '1':
+ *                 value:
+ *                   mensagem: Token não informado.
+ *               '2':
+ *                 value:
+ *                   mensagem: Sessão inválida ou expirada.
+ *               '3':
+ *                 value:
+ *                   mensagem: Token com usuário inválido.
+ *               '4':
+ *                 value:
+ *                   mensagem: Usuário não encontrado.
+ *       '403':
+ *         description: Você não tem permissão para excluir este comentário.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Você não tem permissão para excluir este comentário.
+ *       '404':
+ *         description: Comentário não encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Comentário não encontrado.
+ *       '500':
+ *         description: Erro ao excluir comentário. / Erro interno do servidor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Erro ao excluir comentário.
+ *               '1':
+ *                 value:
+ *                   mensagem: Erro interno do servidor.
+ *       '503':
+ *         description: Serviço de autenticação indisponível.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Serviço de autenticação indisponível.
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: Inteiro positivo.
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           example: 1
+ */
 router.delete('/:id', verificarAutenticacao, async (req, res) => {
     try {
 

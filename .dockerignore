@@ -1,7 +1,10 @@
 node_modules
 npm-debug.log
 .env
+**/.env
 .git
 .gitignore
-auth-service
+auth-service/**
+!auth-service/src/
+!auth-service/src/*.js
 log-service

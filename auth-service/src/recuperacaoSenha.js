@@ -7,6 +7,77 @@ const mailer = require('./mailer');
 
 const router = express.Router();
 
+/**
+ * @openapi
+ * /auth/esqueci-senha:
+ *   post:
+ *     tags:
+ *       - Auth-service
+ *     summary: Solicitar recuperação de senha
+ *     description: >-
+ *       Resposta genérica mesmo se a conta não existir; se existir, envia e-mail com link e token de 30 minutos.
+ *       Sucesso: Se o e-mail estiver cadastrado, você receberá um link de recuperação. Proxy público existente:
+ *       POST /api/auth/esqueci-senha. Teste esse proxy em /apidocs, com cookie; ele não aceita Bearer do
+ *       navegador.
+ *     operationId: post_auth_esqueci_senha
+ *     security: []
+ *     responses:
+ *       '200':
+ *         description: Solicitar recuperação de senha
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             example:
+ *               mensagem: Se o e-mail estiver cadastrado, você receberá um link de recuperação.
+ *       '400':
+ *         description: >-
+ *           E-mail é obrigatório. JSON malformado ou corpo inválido para express.json (resposta padrão HTML do
+ *           Express).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: E-mail é obrigatório.
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '413':
+ *         description: Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '415':
+ *         description: Charset ou Content-Encoding não suportado pelo parser (HTML do Express).
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '500':
+ *         description: Erro interno do servidor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Erro interno do servidor.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Recuperacao'
+ *     x-public-proxy: POST /api/auth/esqueci-senha
+ */
 router.post('/esqueci-senha', async (req, res) => {
     try {
         const { email } = req.body;
@@ -94,6 +165,89 @@ router.post('/esqueci-senha', async (req, res) => {
     }
 });
 
+/**
+ * @openapi
+ * /auth/redefinir-senha:
+ *   post:
+ *     tags:
+ *       - Auth-service
+ *     summary: Redefinir senha
+ *     description: >-
+ *       Token deve existir, não ter expirado e ainda não ter sido utilizado. Nova senha com no mínimo 6
+ *       caracteres. Sucesso: Senha redefinida com sucesso! Proxy público existente: POST
+ *       /api/auth/redefinir-senha. Teste esse proxy em /apidocs, com cookie; ele não aceita Bearer do navegador.
+ *     operationId: post_auth_redefinir_senha
+ *     security: []
+ *     responses:
+ *       '200':
+ *         description: Redefinir senha
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             example:
+ *               mensagem: Senha redefinida com sucesso!
+ *       '400':
+ *         description: >-
+ *           Token e nova senha são obrigatórios. / A senha deve ter pelo menos 6 caracteres. / Token inválido. /
+ *           Este link já foi utilizado. / Este link expirou. Solicite uma nova recuperação de senha. JSON
+ *           malformado ou corpo inválido para express.json (resposta padrão HTML do Express).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Token e nova senha são obrigatórios.
+ *               '1':
+ *                 value:
+ *                   mensagem: A senha deve ter pelo menos 6 caracteres.
+ *               '2':
+ *                 value:
+ *                   mensagem: Token inválido.
+ *               '3':
+ *                 value:
+ *                   mensagem: Este link já foi utilizado.
+ *               '4':
+ *                 value:
+ *                   mensagem: Este link expirou. Solicite uma nova recuperação de senha.
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '413':
+ *         description: Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '415':
+ *         description: Charset ou Content-Encoding não suportado pelo parser (HTML do Express).
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *               description: Página padrão de erro do Express; corpo depende do ambiente.
+ *       '500':
+ *         description: Erro interno do servidor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Mensagem'
+ *             examples:
+ *               '0':
+ *                 value:
+ *                   mensagem: Erro interno do servidor.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Redefinicao'
+ *     x-public-proxy: POST /api/auth/redefinir-senha
+ */
 router.post('/redefinir-senha', async (req, res) => {
     try {
         const { token, senha } = req.body;

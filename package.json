@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/*.test.js auth-service/test/*.test.js log-service/test/consulta.js"
+    "test": "node --test test/*.test.js auth-service/test/*.test.js log-service/test/consulta.js",
+    "docs:generate": "node scripts/gerar-openapi.js",
+    "docs:validate": "node scripts/validar-openapi.js"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +20,11 @@
     "minio": "^8.0.7",
     "multer": "^2.4.0",
     "mysql2": "^3.23.3",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0"
   }
 }

@@ -1,0 +1,3679 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Catálogo de filmes — API pública",
+    "version": "1.0.0",
+    "description": "Sessão pelo cookie HttpOnly token. Faça login em /login.html no mesmo navegador ou execute POST /api/auth/login com uma conta local. Não cole o cookie no Authorize. GET /api/auth/me sem sessão retorna 401 e é uma chamada segura para demonstrar Try it out. Papel comum: usuario; administrador: admin. Alterações de dados devem ser testadas somente no ambiente local."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Mesma origem do catálogo (local ou publicada)"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Mensagem": {
+        "type": "object",
+        "properties": {
+          "mensagem": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mensagem"
+        ]
+      },
+      "Usuario": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "nome": {
+            "type": "string",
+            "example": "Pessoa de exemplo"
+          },
+          "email": {
+            "type": "string",
+            "example": "pessoa@example.invalid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "usuario",
+              "admin"
+            ],
+            "example": "usuario"
+          }
+        },
+        "required": [
+          "id",
+          "nome",
+          "email",
+          "role"
+        ]
+      },
+      "Cadastro": {
+        "type": "object",
+        "properties": {
+          "nome": {
+            "type": "string",
+            "minLength": 1,
+            "description": "String não vazia após trim."
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Normalizado com trim e lowercase; não há validação de formato no servidor."
+          },
+          "senha": {
+            "type": "string",
+            "minLength": 6,
+            "writeOnly": true,
+            "description": "Senha escolhida em uma conta local de teste; nunca use credenciais reais nos exemplos."
+          }
+        },
+        "required": [
+          "nome",
+          "email",
+          "senha"
+        ]
+      },
+      "Login": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Não vazio após trim."
+          },
+          "senha": {
+            "type": "string",
+            "minLength": 1,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "email",
+          "senha"
+        ]
+      },
+      "Recuperacao": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Não vazio após trim; a resposta não revela se a conta existe."
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "Redefinicao": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "writeOnly": true,
+            "description": "Obtido no e-mail; válido por 30 minutos e de uso único. Sem exemplo de token."
+          },
+          "senha": {
+            "type": "string",
+            "minLength": 6,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "token",
+          "senha"
+        ]
+      },
+      "Role": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "usuario",
+              "admin"
+            ],
+            "example": "usuario"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "Filme": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "titulo": {
+            "type": "string",
+            "example": "Forrest Gump"
+          },
+          "sinopse": {
+            "type": "string"
+          },
+          "data_lancamento": {
+            "type": "string",
+            "description": "Data enviada pela TMDB, que pode ser vazia."
+          },
+          "poster_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "titulo",
+          "sinopse",
+          "data_lancamento",
+          "poster_url"
+        ]
+      },
+      "Comentario": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "tmdb_movie_id": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "texto": {
+            "type": "string",
+            "example": "Comentário de exemplo"
+          },
+          "criado_em": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "tmdb_movie_id",
+          "texto"
+        ]
+      },
+      "NovoComentario": {
+        "type": "object",
+        "properties": {
+          "texto": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Texto não vazio após trim. Não existe limite de comprimento validado nesta rota.",
+            "example": "Comentário de exemplo"
+          }
+        },
+        "required": [
+          "texto"
+        ]
+      },
+      "Bio": {
+        "type": "object",
+        "properties": {
+          "bio": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Até 300 pontos de código Unicode após trim; string vazia é aceita.",
+            "example": "Gosto de cinema."
+          }
+        },
+        "required": [
+          "bio"
+        ]
+      },
+      "Foto": {
+        "type": "object",
+        "properties": {
+          "foto": {
+            "type": "string",
+            "format": "binary",
+            "description": "Uma única foto JPEG, PNG ou WebP estática; até 5 MiB (5242880 bytes) e 25 megapixels. Sem campos adicionais. Conteúdo decodificado, metadados removidos e imagem redimensionada até 1600×1600 mantendo proporção."
+          }
+        },
+        "required": [
+          "foto"
+        ]
+      },
+      "FotoSalva": {
+        "type": "object",
+        "properties": {
+          "foto_chave": {
+            "type": "string",
+            "example": "perfis/1/00000000-0000-0000-0000-000000000000.jpg"
+          },
+          "foto_url": {
+            "type": "string",
+            "example": "/api/perfil/fotos/1/00000000-0000-0000-0000-000000000000.jpg"
+          }
+        },
+        "required": [
+          "foto_chave",
+          "foto_url"
+        ]
+      },
+      "Perfil": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "nome": {
+            "type": "string"
+          },
+          "bio": {
+            "type": "string"
+          },
+          "foto_chave": {
+            "type": "string",
+            "nullable": true
+          },
+          "foto_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "favoritos": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          },
+          "proprio": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "nome",
+          "bio",
+          "foto_chave",
+          "foto_url",
+          "favoritos",
+          "proprio"
+        ]
+      },
+      "Evento": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "1720000000000-0"
+          },
+          "usuario_id": {
+            "type": "string",
+            "description": "ID armazenado como string pelo Redis."
+          },
+          "acao": {
+            "type": "string",
+            "example": "LOGIN"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "detalhes": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "usuario_id",
+          "acao",
+          "timestamp"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "sessao": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "token",
+        "description": "Cookie HttpOnly criado por POST /api/auth/login. Faça login pelo formulário /login.html no mesmo navegador ou execute o login no Swagger. O navegador envia o cookie automaticamente; não leia nem cole o cookie no Authorize. SameSite=Lax; Secure em produção; duração 8 horas."
+      }
+    }
+  },
+  "paths": {
+    "/api/perfil/fotos/{usuarioId}/{arquivo}": {
+      "get": {
+        "tags": [
+          "Perfil e upload"
+        ],
+        "summary": "Ler foto publicamente",
+        "description": "Sem autenticação. Só aceita chave perfis/ID/UUID.(jpg|png|webp). Leitura pública via catálogo; escrita restrita ao backend.",
+        "operationId": "get_api_perfil_fotos_usuarioId_arquivo",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Foto; Cache-Control public, max-age=86400 e X-Content-Type-Options nosniff.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chave inválida ou foto não encontrada",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Not Found"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Armazenamento indisponível ou resposta inválida",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Service Unavailable"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "usuarioId",
+            "in": "path",
+            "required": true,
+            "description": "Dígitos decimais positivos, sem zero à esquerda (validado no caminho da chave).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          },
+          {
+            "name": "arquivo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f-]{36}\\.(jpg|png|webp)$",
+              "example": "00000000-0000-0000-0000-000000000000.jpg"
+            }
+          }
+        ]
+      }
+    },
+    "/api/perfil/me": {
+      "get": {
+        "tags": [
+          "Perfil e upload"
+        ],
+        "summary": "Consultar perfil",
+        "description": "Perfil próprio (me) ou de outro usuário, incluindo IDs dos favoritos. Não exige propriedade para leitura. Cache-Control no-store. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_perfil_me",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Perfil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "perfil": {
+                      "$ref": "#/components/schemas/Perfil"
+                    }
+                  },
+                  "required": [
+                    "perfil"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Perfil não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Perfil não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Não foi possível consultar o perfil. / Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Não foi possível consultar o perfil."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/perfil/{id}": {
+      "get": {
+        "tags": [
+          "Perfil e upload"
+        ],
+        "summary": "Consultar perfil",
+        "description": "Perfil próprio (me) ou de outro usuário, incluindo IDs dos favoritos. Não exige propriedade para leitura. Cache-Control no-store. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_perfil_id",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Perfil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "perfil": {
+                      "$ref": "#/components/schemas/Perfil"
+                    }
+                  },
+                  "required": [
+                    "perfil"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID de usuário inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID de usuário inválido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Perfil não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Perfil não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Não foi possível consultar o perfil. / Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Não foi possível consultar o perfil."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Inteiro positivo seguro JavaScript.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Perfil e upload"
+        ],
+        "summary": "Atualizar bio própria",
+        "description": "Somente proprietário, inclusive para administradores. ID comparado à sessão; ACAO_NEGADA em recusa. Bio limitada a 300 pontos de código após trim. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "patch_api_perfil_id",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bio atualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mensagem": {
+                      "type": "string"
+                    },
+                    "bio": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "mensagem",
+                    "bio"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID de usuário inválido. / A bio deve ter no máximo 300 caracteres. JSON malformado ou corpo inválido para express.json (resposta padrão HTML do Express).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID de usuário inválido."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "A bio deve ter no máximo 300 caracteres."
+                    }
+                  }
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Você só pode editar o próprio perfil.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Você só pode editar o próprio perfil."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Charset ou Content-Encoding não suportado pelo parser (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Não foi possível atualizar a bio. / Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Não foi possível atualizar a bio."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Inteiro positivo.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Bio"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/perfil/{id}/foto": {
+      "post": {
+        "tags": [
+          "Perfil e upload"
+        ],
+        "summary": "Atualizar foto própria",
+        "description": "Somente proprietário (admin não pode alterar outra conta). Uma foto estática validada, redimensionada e reencodificada; MariaDB armazena a chave do objeto. Sem campos adicionais no multipart. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "post_api_perfil_id_foto",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Foto atualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mensagem": {
+                      "type": "string"
+                    },
+                    "foto_chave": {
+                      "type": "string"
+                    },
+                    "foto_url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "mensagem",
+                    "foto_chave",
+                    "foto_url"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID de usuário inválido. / Envie somente uma imagem JPEG, PNG ou WebP no campo foto. / Envie uma foto JPEG, PNG ou WebP. / Imagem inválida. Use JPEG, PNG ou WebP estático de até 25 megapixels.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID de usuário inválido."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Envie somente uma imagem JPEG, PNG ou WebP no campo foto."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Envie uma foto JPEG, PNG ou WebP."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Imagem inválida. Use JPEG, PNG ou WebP estático de até 25 megapixels."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Você só pode editar o próprio perfil.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Você só pode editar o próprio perfil."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "A foto deve ter no máximo 5 MB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "A foto deve ter no máximo 5 MB."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Armazenamento de fotos indisponível. Tente novamente. / Não foi possível confirmar a foto. Recarregue o perfil antes de tentar novamente. / Não foi possível atualizar a foto. / Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Armazenamento de fotos indisponível. Tente novamente."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Não foi possível confirmar a foto. Recarregue o perfil antes de tentar novamente."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Não foi possível atualizar a foto."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Inteiro positivo.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Foto"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logs": {
+      "get": {
+        "tags": [
+          "Auditoria"
+        ],
+        "summary": "Consultar auditoria (admin)",
+        "description": "Somente admin. Encaminha apenas limit ao log-service; busca textual e filtros da interface ocorrem no navegador. Últimos N eventos apresentados em ordem cronológica dentro do lote. Tentativas não autorizadas geram ACAO_NEGADA. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_logs",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eventos de auditoria",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "quantidade": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "eventos": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Evento"
+                      }
+                    }
+                  },
+                  "required": [
+                    "quantidade",
+                    "eventos"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "limit deve ser um inteiro entre 1 e 100.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "limit deve ser um inteiro entre 1 e 100."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado. / Token não informado ou inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  },
+                  "5": {
+                    "value": {
+                      "mensagem": "Token não informado ou inválido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso permitido somente a administradores.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Acesso permitido somente a administradores."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de auditoria indisponível. / Serviço de auditoria temporariamente indisponível. / Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de auditoria indisponível."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Serviço de auditoria temporariamente indisponível."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Uma única string decimal positiva, sem zeros à esquerda. Parâmetro repetido é rejeitado.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ]
+      }
+    },
+    "/api/filmes": {
+      "get": {
+        "tags": [
+          "Filmes"
+        ],
+        "summary": "Consultar filmes de Tom Hanks",
+        "description": "Busca pessoa Tom Hanks e depois créditos de elenco na TMDB, em pt-BR. Sem parâmetros de consulta. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_filmes",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Créditos da TMDB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pessoa": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "example": 1
+                        },
+                        "nome": {
+                          "type": "string",
+                          "example": "Tom Hanks"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "nome"
+                      ]
+                    },
+                    "filmes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Filme"
+                      }
+                    }
+                  },
+                  "required": [
+                    "pessoa",
+                    "filmes"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tom Hanks não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Tom Hanks não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Não foi possível buscar os filmes da TMDB. / Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Não foi possível buscar os filmes da TMDB."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/favoritos": {
+      "get": {
+        "tags": [
+          "Favoritos"
+        ],
+        "summary": "Listar favoritos próprios",
+        "description": "Retorna somente IDs TMDB, na ordem criado_em DESC. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_favoritos",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "IDs favoritos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "favoritos": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "example": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "favoritos"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro ao buscar favoritos. / Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro ao buscar favoritos."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/favoritos/{movieId}": {
+      "post": {
+        "tags": [
+          "Favoritos"
+        ],
+        "summary": "Adicionar favorito",
+        "description": "Opera somente na conta autenticada. Sucesso: Filme adicionado aos favoritos! Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "post_api_favoritos_movieId",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Filme adicionado aos favoritos!",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "example": {
+                  "mensagem": "Filme adicionado aos favoritos!"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID do filme inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID do filme inválido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Este filme já está nos favoritos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Este filme já está nos favoritos."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro ao adicionar favorito. / Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro ao adicionar favorito."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "movieId",
+            "in": "path",
+            "required": true,
+            "description": "Inteiro positivo.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Favoritos"
+        ],
+        "summary": "Remover favorito",
+        "description": "Opera somente na conta autenticada. Sucesso: Favorito removido com sucesso! Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "delete_api_favoritos_movieId",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Favorito removido com sucesso!",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "example": {
+                  "mensagem": "Favorito removido com sucesso!"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID do filme inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID do filme inválido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Favorito não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Favorito não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro ao remover favorito. / Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro ao remover favorito."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "movieId",
+            "in": "path",
+            "required": true,
+            "description": "Inteiro positivo.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/comentarios": {
+      "get": {
+        "tags": [
+          "Comentários"
+        ],
+        "summary": "Listar comentários próprios",
+        "description": "Somente comentários do usuário autenticado; mesmo admin não lista comentários de outras contas. Ordem criado_em DESC. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_comentarios",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comentários",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "comentarios": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Comentario"
+                      }
+                    }
+                  },
+                  "required": [
+                    "comentarios"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro ao buscar comentários. / Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro ao buscar comentários."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/comentarios/{movieId}": {
+      "get": {
+        "tags": [
+          "Comentários"
+        ],
+        "summary": "Listar comentários próprios",
+        "description": "Somente comentários do usuário autenticado; mesmo admin não lista comentários de outras contas. Ordem criado_em DESC. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_comentarios_movieId",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comentários",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "comentarios": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Comentario"
+                      }
+                    }
+                  },
+                  "required": [
+                    "comentarios"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID do filme inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID do filme inválido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro ao buscar comentários. / Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro ao buscar comentários."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "movieId",
+            "in": "path",
+            "required": true,
+            "description": "Inteiro positivo.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Comentários"
+        ],
+        "summary": "Publicar comentário",
+        "description": "Texto é salvo após trim. Valor não string pode gerar 500, pois a implementação chama trim diretamente. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "post_api_comentarios_movieId",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Comentário salvo com sucesso!",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mensagem": {
+                      "type": "string"
+                    },
+                    "comentario": {
+                      "$ref": "#/components/schemas/Comentario"
+                    }
+                  },
+                  "required": [
+                    "mensagem",
+                    "comentario"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID do filme inválido. / O comentário não pode estar vazio. JSON malformado ou corpo inválido para express.json (resposta padrão HTML do Express).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID do filme inválido."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "O comentário não pode estar vazio."
+                    }
+                  }
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Charset ou Content-Encoding não suportado pelo parser (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro ao salvar comentário. / Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro ao salvar comentário."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "movieId",
+            "in": "path",
+            "required": true,
+            "description": "Inteiro positivo.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovoComentario"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/comentarios/{id}": {
+      "delete": {
+        "tags": [
+          "Comentários"
+        ],
+        "summary": "Excluir comentário",
+        "description": "Somente autor ou admin. A permissão é conferida no backend; negação gera ACAO_NEGADA. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "delete_api_comentarios_id",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comentário removido com sucesso!",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "example": {
+                  "mensagem": "Comentário removido com sucesso!"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID do comentário inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID do comentário inválido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Você não tem permissão para excluir este comentário.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Você não tem permissão para excluir este comentário."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Comentário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Comentário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro ao excluir comentário. / Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro ao excluir comentário."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Inteiro positivo.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/auth/cadastro": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Cadastrar usuário",
+        "description": "Cria conta com role usuario; qualquer role enviada é ignorada. Nome e e-mail normalizados com trim; e-mail lowercase.",
+        "operationId": "post_api_auth_cadastro",
+        "security": [],
+        "responses": {
+          "201": {
+            "description": "Cadastrar usuário",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mensagem": {
+                      "type": "string"
+                    },
+                    "usuario": {
+                      "$ref": "#/components/schemas/Usuario"
+                    }
+                  },
+                  "required": [
+                    "mensagem",
+                    "usuario"
+                  ]
+                },
+                "example": {
+                  "mensagem": "Usuário cadastrado com sucesso!",
+                  "usuario": {
+                    "id": 1,
+                    "nome": "Pessoa de exemplo",
+                    "email": "pessoa@example.invalid",
+                    "role": "usuario"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nome, e-mail e senha são obrigatórios. / A senha deve ter pelo menos 6 caracteres. JSON malformado ou corpo inválido para express.json (resposta padrão HTML do Express).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Nome, e-mail e senha são obrigatórios."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "A senha deve ter pelo menos 6 caracteres."
+                    }
+                  }
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Este e-mail já está cadastrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Este e-mail já está cadastrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Charset ou Content-Encoding não suportado pelo parser (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Cadastro"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Autenticar usuário",
+        "description": "Senha comparada com bcryptjs. Define Set-Cookie token (HttpOnly, SameSite=Lax, Secure em produção, 8 horas); não retorna JWT no corpo. Faça login com uma conta LOCAL antes de testar operações protegidas.",
+        "operationId": "post_api_auth_login",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Autenticar usuário",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mensagem": {
+                      "type": "string"
+                    },
+                    "usuario": {
+                      "$ref": "#/components/schemas/Usuario"
+                    }
+                  },
+                  "required": [
+                    "mensagem",
+                    "usuario"
+                  ]
+                },
+                "example": {
+                  "mensagem": "Login realizado com sucesso!",
+                  "usuario": {
+                    "id": 1,
+                    "nome": "Pessoa de exemplo",
+                    "email": "pessoa@example.invalid",
+                    "role": "usuario"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "description": "token=JWT; HttpOnly; SameSite=Lax; Secure em produção; validade de 8h. Enviado automaticamente pelo navegador; sem exemplo de credencial.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "E-mail e senha são obrigatórios. JSON malformado ou corpo inválido para express.json (resposta padrão HTML do Express).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "E-mail e senha são obrigatórios."
+                    }
+                  }
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "E-mail ou senha inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "E-mail ou senha inválidos."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Charset ou Content-Encoding não suportado pelo parser (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Resposta inválida do serviço de autenticação.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Resposta inválida do serviço de autenticação."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Consultar sessão",
+        "description": "Retorna id, nome, email e role atual da conta. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_auth_me",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessão válida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "usuario": {
+                      "$ref": "#/components/schemas/Usuario"
+                    }
+                  },
+                  "required": [
+                    "usuario"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Encerrar sessão",
+        "description": "Limpa o cookie token e registra LOGOUT. Sucesso: Logout realizado com sucesso! Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "post_api_auth_logout",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessão encerrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "example": {
+                  "mensagem": "Logout realizado com sucesso!"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/esqueci-senha": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Solicitar recuperação de senha",
+        "description": "Resposta genérica mesmo se a conta não existir; se existir, envia e-mail com link e token de 30 minutos. Sucesso: Se o e-mail estiver cadastrado, você receberá um link de recuperação.",
+        "operationId": "post_api_auth_esqueci_senha",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Solicitar recuperação de senha",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "example": {
+                  "mensagem": "Se o e-mail estiver cadastrado, você receberá um link de recuperação."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "E-mail é obrigatório. JSON malformado ou corpo inválido para express.json (resposta padrão HTML do Express).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "E-mail é obrigatório."
+                    }
+                  }
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Charset ou Content-Encoding não suportado pelo parser (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Recuperacao"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/redefinir-senha": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Redefinir senha",
+        "description": "Token deve existir, não ter expirado e ainda não ter sido utilizado. Nova senha com no mínimo 6 caracteres. Sucesso: Senha redefinida com sucesso!",
+        "operationId": "post_api_auth_redefinir_senha",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Redefinir senha",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "example": {
+                  "mensagem": "Senha redefinida com sucesso!"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Token e nova senha são obrigatórios. / A senha deve ter pelo menos 6 caracteres. / Token inválido. / Este link já foi utilizado. / Este link expirou. Solicite uma nova recuperação de senha. JSON malformado ou corpo inválido para express.json (resposta padrão HTML do Express).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Token e nova senha são obrigatórios."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "A senha deve ter pelo menos 6 caracteres."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Token inválido."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Este link já foi utilizado."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Este link expirou. Solicite uma nova recuperação de senha."
+                    }
+                  }
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Charset ou Content-Encoding não suportado pelo parser (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Redefinicao"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/usuarios": {
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Listar usuários (admin)",
+        "description": "Exige role admin; retorna somente id, nome, email e role, em ordem de nome e id. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "get_api_admin_usuarios",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usuários",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "usuarios": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Usuario"
+                      }
+                    }
+                  },
+                  "required": [
+                    "usuarios"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso permitido somente a administradores.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Acesso permitido somente a administradores."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/usuarios/{id}/role": {
+      "patch": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Alterar papel (admin)",
+        "description": "Exige admin atual no banco; ID em dígitos decimais positivos e Number.isSafeInteger. Não permite alterar o próprio papel nem remover o último admin. Mensagem: Papel do usuário atualizado com sucesso. ou Usuário já possui o papel solicitado. Requer sessão autenticada (cookie HttpOnly token).",
+        "operationId": "patch_api_admin_usuarios_id_role",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Papel alterado ou já atribuído",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mensagem": {
+                      "type": "string"
+                    },
+                    "usuario": {
+                      "$ref": "#/components/schemas/Usuario"
+                    }
+                  },
+                  "required": [
+                    "mensagem",
+                    "usuario"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID do usuário inválido. / Role deve ser usuario ou admin. JSON malformado ou corpo inválido para express.json (resposta padrão HTML do Express).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "ID do usuário inválido."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Role deve ser usuario ou admin."
+                    }
+                  }
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuário não autenticado. / Token não informado. / Sessão inválida ou expirada. / Token com usuário inválido. / Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não autenticado."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Token não informado."
+                    }
+                  },
+                  "2": {
+                    "value": {
+                      "mensagem": "Sessão inválida ou expirada."
+                    }
+                  },
+                  "3": {
+                    "value": {
+                      "mensagem": "Token com usuário inválido."
+                    }
+                  },
+                  "4": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso permitido somente a administradores.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Acesso permitido somente a administradores."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Usuário não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Usuário não encontrado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Não é possível remover o papel do último administrador do sistema. / Não é permitido alterar o próprio papel administrativo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Não é possível remover o papel do último administrador do sistema."
+                    }
+                  },
+                  "1": {
+                    "value": {
+                      "mensagem": "Não é permitido alterar o próprio papel administrativo."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corpo acima do limite padrão de 100 KiB de express.json/urlencoded (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Charset ou Content-Encoding não suportado pelo parser (HTML do Express).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Página padrão de erro do Express; corpo depende do ambiente."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Erro interno do servidor."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço de autenticação indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensagem"
+                },
+                "examples": {
+                  "0": {
+                    "value": {
+                      "mensagem": "Serviço de autenticação indisponível."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Dígitos decimais sem zeros à esquerda; inteiro positivo seguro JavaScript.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "example": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Role"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

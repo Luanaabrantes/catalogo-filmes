@@ -457,6 +457,85 @@ console.log(resposta.status, await resposta.json());
 
 </details>
 
+## Atividade extra — Swagger/OpenAPI
+
+Atividade da disciplina **ISW055 — Introdução à Computação em Nuvem**, professor [@siriani](https://github.com/siriani). A documentação usa OpenAPI 3.0.3, `swagger-jsdoc` e `swagger-ui-express`, com anotações junto às rotas e schemas reutilizáveis.
+
+### Serviços e contratos documentados
+
+- **Catálogo (22 operações):** cadastro, login, sessão, logout, recuperação de senha, filmes TMDB, favoritos, comentários, auditoria, administração de usuários e perfil/upload de foto.
+- **Auth-service (8 operações):** health, cadastro, login, validação da sessão, recuperação/redefinição de senha e administração de usuários. As rotas da especificação são as rotas internas reais.
+- Especificações no repositório: [catálogo](docs/openapi/catalogo.json) e [auth-service](docs/openapi/auth.json). Schemas em [components.js](docs/openapi/components.js); contratos nos comentários `@openapi` dos arquivos de rotas.
+
+### Executar e consultar localmente
+
+```bash
+npm ci
+npm run docs:generate
+npm run docs:validate
+npm test
+npm start
+```
+
+Configure as variáveis já utilizadas pelo projeto e mantenha o MariaDB e os serviços locais acessíveis ao catálogo. No Docker Compose, o catálogo usa `AUTH_SERVICE_URL=http://auth-service:3001` e `LOG_SERVICE_URL=http://log-service:3002`. Auth-service, log-service, Redis e MinIO continuam na rede interna, sem novas portas publicadas. Execute `docker compose up --build` quando o ambiente e as variáveis estiverem preparados. Não use serviços de produção para testar operações de escrita.
+
+Com a porta padrão 3000:
+
+- [Swagger do catálogo](http://localhost:3000/apidocs/).
+- [Swagger do auth-service](http://localhost:3000/apidocs/auth/).
+- Especificações servidas: [catálogo JSON](http://localhost:3000/openapi/catalogo.json) e [auth-service JSON](http://localhost:3000/openapi/auth.json).
+
+É possível escolher outra porta com `PORT`. Na validação desta atividade foi usado `PORT=3010`, com o catálogo em `http://localhost:3010/apidocs/` e o auth-service documentado em `http://localhost:3010/apidocs/auth/`. A especificação pública usa a mesma origem (`servers: /`), sem fixar localhost para produção. As páginas foram verificadas localmente; **não houve deploy nem confirmação desses caminhos no servidor publicado**.
+
+O `.dockerignore` permite copiar somente os arquivos JavaScript de `auth-service/src` para a imagem do catálogo, para leitura das anotações durante a geração da documentação. Não copia o `.env`, as dependências ou outros arquivos do auth-service e não executa esse serviço dentro do catálogo.
+
+### Sessão e Try it out
+
+O catálogo usa o cookie **`token`**, HttpOnly, SameSite=Lax, com duração de oito horas e Secure em produção. Entre com uma conta local em `/login.html`, no mesmo navegador e origem do Swagger, ou execute `POST /api/auth/login` com essa conta no Swagger. O navegador recebe e envia o cookie automaticamente. Não leia o cookie com JavaScript, não o cole em **Authorize** e não informe Bearer nas rotas públicas.
+
+Para uma demonstração sem dados sensíveis e sem alterar registros:
+
+1. Abra o Swagger local sem sessão autenticada.
+2. Expanda **Autenticação → GET /api/auth/me**.
+3. Clique em **Try it out → Execute**.
+4. Confira em **Server response** o HTTP **401** e o corpo `{"mensagem":"Usuário não autenticado."}`. Esse é um retorno real esperado para sessão ausente; não representa um login bem-sucedido.
+5. Com uma sessão local válida, a mesma consulta retorna **200** com `usuario` (`id`, `nome`, `email`, `role`). Esse cenário requer auth-service e banco local disponíveis e não foi executado na captura abaixo.
+
+O upload é `POST /api/perfil/{id}/foto`, `multipart/form-data`, campo único **`foto`**, JPEG/PNG/WebP estático de até **5 MiB** e **25 megapixels**. A bio aceita até 300 pontos de código Unicode após trim. A leitura de outro perfil é permitida a usuários autenticados; edição e upload exigem o proprietário, inclusive para administradores. O papel comum real é `usuario`; as operações administrativas exigem `admin`. Falta de autenticação é **401**; falta de permissão é **403**.
+
+### Rotas internas e proxies existentes
+
+O Swagger em `/apidocs/auth/` apresenta os contratos internos, mas o **Try it out é desabilitado nessa página**: o navegador não consegue acessar o endereço Docker `auth-service:3001`. Nenhuma operação interna foi exposta apenas para habilitar a documentação.
+
+| Rota interna | Proxy existente no catálogo |
+| --- | --- |
+| `POST /auth/cadastro` | `POST /api/auth/cadastro` |
+| `POST /auth/login` | `POST /api/auth/login` (transforma JWT em cookie; não retorna o token no corpo) |
+| `GET /auth/validar` | `GET /api/auth/me` |
+| `POST /auth/esqueci-senha` | `POST /api/auth/esqueci-senha` |
+| `POST /auth/redefinir-senha` | `POST /api/auth/redefinir-senha` |
+| `GET /auth/admin/usuarios` | `GET /api/admin/usuarios` |
+| `PATCH /auth/admin/usuarios/{id}/role` | `PATCH /api/admin/usuarios/{id}/role` |
+| `GET /health` | Sem proxy público |
+
+Teste os proxies no Swagger do catálogo com cookie. Para uma chamada interna sem credenciais, dentro da rede Docker:
+
+```bash
+docker compose exec catalogo node -e "fetch('http://auth-service:3001/health').then(async r => console.log(r.status, await r.json()))"
+```
+
+`GET /auth/validar` e `/auth/admin/*` exigem `Authorization: Bearer` com um JWT de teste obtido pelo login interno; as demais rotas internas não usam Bearer. Para testá-las diretamente, execute um cliente dentro da rede Docker, mantenha os tokens apenas na memória e não os inclua em prints, comandos versionados ou exemplos. Em `/health`, sucesso significa processo ativo, não teste de conexão com o banco.
+
+### Evidência e validação
+
+Foram executados os testes existentes, a validação OpenAPI e a comparação exata das especificações com as rotas reais dos dois serviços. A evidência abaixo registra **Try it out → Execute** de `GET /api/auth/me` no catálogo local, com HTTP **401** e o corpo real da resposta. A execução não consultou nem alterou dados de produção.
+
+A execução final de `npm test` aprovou **52 testes** (49 existentes e 3 de documentação). As duas especificações passaram no validador OpenAPI. A imagem Docker local também foi testada em um contêiner temporário sem rede externa nem portas publicadas: os dois Swaggers e os dois JSONs retornaram 200, e a consulta de sessão sem cookie retornou 401. Nenhum `.env` foi copiado para a imagem. O teste de sessão autenticada com todos os serviços e banco local permanece para conferência em um ambiente completo. O `npm audit` reportou sete avisos em dependências já presentes no lockfile anterior (cinco moderados, um alto e um crítico), sem atualização dessas dependências nesta atividade.
+
+![Swagger UI com GET /api/auth/me executado e resposta real 401 para sessão ausente](docs/evidencias/atividade-extra-swagger.png)
+
+Após mudar contratos ou schemas, execute novamente `npm run docs:generate`, `npm run docs:validate` e `npm test`. As verificações de documentação também detectam exportações desatualizadas e diferenças entre rotas documentadas e implementadas.
+
 ## Tecnologias
 
 Node.js, Express, JavaScript, HTML, CSS, MariaDB, MySQL2, `bcryptjs`, `jsonwebtoken`, Nodemailer, API TMDB, Redis, Redis Streams, MinIO, Multer, Sharp, Docker e Docker Compose.

@@ -42,6 +42,9 @@ app.use(
 // Permite trabalhar com cookies
 app.use(cookieParser());
 
+// Documentação de leitura; os serviços internos continuam privados.
+require('./documentacao')(app);
+
 // Disponibiliza os arquivos da pasta public
 app.use(
     express.static(
