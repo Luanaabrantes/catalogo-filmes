@@ -14,14 +14,15 @@ async function verificarAutenticacao(req, res, next) {
                 method: 'GET',
                 headers: {
                     Authorization: `Bearer ${token}`
-                }
+                },
+                signal: AbortSignal.timeout(2000)
             }
         );
 
         const dados = await resposta.json();
 
         if (!resposta.ok) {
-            return res.status(401).json({
+            return res.status(resposta.status).json({
                 mensagem:
                     dados.mensagem ||
                     'Sessão inválida ou expirada.'
@@ -33,10 +34,7 @@ async function verificarAutenticacao(req, res, next) {
         next();
 
     } catch (erro) {
-        console.error(
-            'Erro ao consultar auth-service:',
-            erro
-        );
+        console.error('Erro ao consultar auth-service.');
 
         return res.status(503).json({
             mensagem:

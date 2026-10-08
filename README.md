@@ -1,573 +1,679 @@
 # Catálogo de Filmes — Tom Hanks
 
-> Projeto desenvolvido para a disciplina **Introdução à Computação em Nuvem (ISW055)**, proposta pelo professor [@siriani](https://github.com/siriani).
+Aplicação acadêmica desenvolvida para a disciplina **Introdução à Computação em Nuvem (ISW055)**, no semestre 2026.2, com catálogo de filmes, autenticação, controle de acesso por papel e auditoria centralizada.
 
-Aplicação web em **Node.js + Express** que consulta filmes de Tom Hanks diretamente na API do **TMDB** e permite que usuários cadastrados mantenham seus próprios favoritos e comentários.
+**Professor:** [@siriani](https://github.com/siriani)
 
-**Atividade 3 — Serviços desacoplados:** a autenticação foi separada do backend principal e transferida para um microsserviço chamado `auth-service`, responsável por cadastro, login, papéis de usuário e recuperação de senha. O catálogo continua sendo o único ponto de entrada público da aplicação.
+📑 **Avaliação P1 (Relatório Bimestral de Atividades):** [P1_ISW055_Luana_Abrantes.pdf](https://github.com/Luanaabrantes/catalogo-filmes/blob/main/docs/P1_ISW055_Luana_Abrantes.pdf)
 
----
+**Aplicação publicada:** [https://luana-abrantes-isw055.lapps.studio/](https://luana-abrantes-isw055.lapps.studio/)
 
-## Stack
+## Funcionalidades
 
-- **Catálogo:** Node.js + Express + MySQL2
-- **Banco:** MariaDB
-- **Autenticação:** `auth-service` + bcryptjs + JSON Web Token
-- **Papéis:** `usuario` e `admin`
-- **Recuperação de senha:** token aleatório, expiração de 30 minutos e uso único
-- **E-mail:** Nodemailer + Mailtrap
-- **Frontend:** HTML + CSS + JavaScript
-- **Filmes:** TMDB API
-- **Infraestrutura:** Docker + Docker Compose
+- Consulta filmes relacionados a Tom Hanks pela API do TMDB. Os dados dos filmes não são persistidos no MariaDB.
+- Cadastro, login, logout e recuperação de senha por e-mail.
+- Favoritos e comentários persistidos e associados ao usuário autenticado.
+- Autorização RBAC para ações administrativas, incluindo moderação de comentários, auditoria e gerenciamento de papéis.
+- Painel administrativo com Visão geral, Auditoria e Usuários.
+- Registro de eventos em um Redis Stream pelo serviço dedicado `log-service`.
+- Perfil com foto no MinIO, bio e favoritos, com edição exclusiva pelo proprietário.
 
----
-
-## Arquitetura
-
-A aplicação possui dois containers conectados pela mesma rede Docker e apenas um ponto de entrada público:
+## Arquitetura atual
 
 ```text
 Navegador
-    │
+    │ HTTP/HTTPS
     ▼
-┌──────────────────────────┐
-│        CATÁLOGO          │
-│   Node.js + Express      │
-│      porta 3000          │
-│                          │
-│ único ponto público      │
-└────────────┬─────────────┘
-             │
-             │ catalogo-network
-             │ rede interna Docker
-             ▼
-┌──────────────────────────┐
-│      AUTH-SERVICE        │
-│   Node.js + Express      │
-│      porta 3001          │
-│                          │
-│ sem porta publicada      │
-└───────┬──────────┬───────┘
-        │          │
-        ▼          ▼
-     MariaDB    Mailtrap
-
-Catálogo ─────────────────▶ TMDB API
+Catálogo / Express :3000 ───────► auth-service :3001 ───────► MariaDB
+    │                                  │                         (externo ao Compose)
+    ├──► MinIO :9000 (fotos; volume minio-data)
+    │                                  └──── POST /eventos ──┐
+    └──────────────────── POST /eventos ────────────────────┤
+                                                            ▼
+                                                     log-service :3002
+                                                            │
+                                                            ▼
+                                                   Redis Stream :6379
 ```
 
-- O `catalogo` é o único serviço com porta publicada para o host.
-- O `auth-service` utiliza somente `expose: "3001"`.
-- Os dois serviços compartilham a rede `catalogo-network`.
-- O catálogo acessa o serviço de autenticação por `http://auth-service:3001`.
-- O navegador nunca acessa diretamente o `auth-service`.
-- O JWT é criado e validado pelo serviço de autenticação.
-- Favoritos e comentários permanecem associados ao usuário autenticado.
+O navegador acessa somente o catálogo. `auth-service`, `log-service`, Redis e MinIO não publicam portas no host: a comunicação entre os microsserviços ocorre na rede Docker `catalogo-network`. O `log-service` é o único componente que acessa Redis; catálogo e `auth-service` enviam eventos para ele por HTTP.
 
-### Docker Compose
+O MariaDB continua fornecendo os dados de negócio e autenticação, mas é uma dependência externa: não há serviço MariaDB definido nos Compose deste projeto.
 
-```yaml
-services:
-  catalogo:
-    build:
-      context: .
-      dockerfile: Dockerfile
-
-    ports:
-      - "3000:3000"
-
-    env_file:
-      - .env
-
-    environment:
-      AUTH_SERVICE_URL: http://auth-service:3001
-
-    depends_on:
-      - auth-service
-
-    networks:
-      - catalogo-network
-
-  auth-service:
-    build:
-      context: ./auth-service
-      dockerfile: Dockerfile
-
-    env_file:
-      - ./auth-service/.env
-
-    expose:
-      - "3001"
-
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-
-    networks:
-      - catalogo-network
-
-networks:
-  catalogo-network:
-    driver: bridge
-```
-
-Somente o catálogo possui:
-
-```yaml
-ports:
-  - "3000:3000"
-```
-
-O `auth-service` possui apenas:
-
-```yaml
-expose:
-  - "3001"
-```
-
-Portanto, a porta `3001` fica disponível apenas dentro da rede Docker.
-
----
-
-## Autenticação
-
-Toda a lógica de autenticação está concentrada no diretório:
-
-```text
-auth-service/
-```
-
-O microsserviço é responsável por:
-
-- cadastro;
-- login;
-- hash e validação de senha;
-- geração e validação do JWT;
-- papéis de usuário;
-- recuperação de senha.
-
-As senhas são transformadas em hash utilizando `bcryptjs` antes de serem armazenadas no MariaDB.
-
-Novos usuários recebem automaticamente:
-
-```text
-role = usuario
-```
-
-O sistema também possui suporte ao papel:
-
-```text
-admin
-```
-
-Após um login válido, o `auth-service` gera um JWT contendo informações como:
-
-```json
-{
-  "id": 1,
-  "nome": "Usuário",
-  "email": "usuario@email.com",
-  "role": "usuario"
-}
-```
-
-O catálogo recebe esse token e o armazena em um cookie `HttpOnly`.
-
-Nas rotas protegidas, o catálogo encaminha o JWT internamente para:
-
-```text
-GET http://auth-service:3001/auth/validar
-```
-
-O serviço valida o token e retorna os dados do usuário autenticado.
-
----
-
-## Recuperação de senha
-
-O fluxo de recuperação de senha também pertence ao `auth-service`.
-
-1. O usuário acessa **Esqueci minha senha**.
-2. Informa o e-mail cadastrado.
-3. O catálogo recebe a solicitação em:
-
-```text
-POST /api/auth/esqueci-senha
-```
-
-4. O catálogo encaminha a requisição ao `auth-service`.
-5. O serviço gera um token com:
-
-```javascript
-crypto.randomBytes(32).toString('hex')
-```
-
-6. O token é armazenado na tabela `reset_tokens`.
-7. Um e-mail com o link de redefinição é enviado pelo Mailtrap.
-8. O usuário acessa o link pelo catálogo e informa uma nova senha.
-9. Após a alteração, o token é marcado como utilizado.
-
-A tabela `reset_tokens` possui:
-
-```text
-token
-usuario_id
-criado_em
-expira_em
-usado
-```
-
-Cada token possui validade de **30 minutos** e pode ser utilizado somente uma vez.
-
-Antes de alterar a senha, o serviço verifica se o token:
-
-- existe;
-- não expirou;
-- ainda não foi utilizado.
-
-Exemplos de recusas:
-
-```json
-{
-  "mensagem": "Token inválido."
-}
-```
-
-```json
-{
-  "mensagem": "Este link já foi utilizado."
-}
-```
-
-```json
-{
-  "mensagem": "Este link expirou. Solicite uma nova recuperação de senha."
-}
-```
-
-A solicitação de recuperação utiliza uma mensagem genérica:
-
-```text
-Se o e-mail estiver cadastrado, você receberá um link de recuperação.
-```
-
-Assim, a aplicação não revela se determinado e-mail possui uma conta cadastrada.
-
----
-
-## Como rodar localmente
-
-### 1. Pré-requisitos
-
-- Node.js 20+
-- npm
-- Docker
-- Docker Compose
-- banco MariaDB/MySQL
-- token da API do TMDB
-- conta no Mailtrap
-
-### 2. Clonar o repositório
-
-```bash
-git clone https://github.com/Luanaabrantes/catalogo-filmes.git
-cd catalogo-filmes
-```
-
-### 3. Configurar o catálogo
-
-Crie `.env` na raiz utilizando `.env.example` como referência:
-
-```env
-DB_HOST=
-DB_PORT=
-DB_USER=
-DB_PASSWORD=
-DB_NAME=
-
-TMDB_TOKEN=
-
-AUTH_SERVICE_URL=http://localhost:3001
-
-PORT=3000
-NODE_ENV=development
-```
-
-### 4. Configurar o auth-service
-
-Crie `auth-service/.env` utilizando `auth-service/.env.example`:
-
-```env
-PORT=3001
-
-DB_HOST=
-DB_PORT=
-DB_USER=
-DB_PASSWORD=
-DB_NAME=
-
-JWT_SECRET=
-
-MAIL_HOST=sandbox.smtp.mailtrap.io
-MAIL_PORT=587
-MAIL_USER=
-MAIL_PASS=
-MAIL_FROM=no-reply@catalogo-filmes.local
-
-CATALOGO_URL=http://localhost:3000
-```
-
-Os arquivos `.env` possuem dados sensíveis e não são enviados ao GitHub.
-
-### 5. Atualizar o banco
-
-Para um banco utilizado anteriormente na Atividade 2, execute:
-
-```text
-database/migracao-atividade3.sql
-```
-
-A migração:
-
-- adiciona o campo `role` à tabela `usuarios`;
-- cria a tabela `reset_tokens`.
-
-### 6. Subir os containers
-
-```bash
-docker compose up -d --build
-```
-
-Verifique:
-
-```bash
-docker compose ps
-```
-
-O resultado deve ser semelhante a:
-
-```text
-SERVICE        PORTS
-
-auth-service   3001/tcp
-catalogo       0.0.0.0:3000->3000/tcp
-```
-
-Somente o catálogo possui uma porta publicada para o host.
-
-A aplicação pode ser acessada em:
-
-```text
-http://localhost:3000
-```
-
-### 7. Testar o isolamento do auth-service
-
-Uma tentativa direta:
-
-```bash
-curl http://localhost:3001/health
-```
-
-deve falhar.
-
-Dentro da rede Docker:
-
-```bash
-docker compose exec catalogo node -e "fetch('http://auth-service:3001/health').then(r=>r.text()).then(console.log)"
-```
-
-deve retornar o status do serviço.
-
-Isso confirma que:
-
-```text
-Host ──X──▶ Auth Service
-```
-
-mas:
-
-```text
-Catálogo ─────▶ Auth Service
-```
-
-funciona pela rede interna.
-
----
-
-## Endpoints
-
-### Catálogo — público
-
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| POST | `/api/auth/cadastro` | Não | Cadastra usuário |
-| POST | `/api/auth/login` | Não | Realiza login |
-| GET | `/api/auth/me` | Sim | Retorna usuário autenticado |
-| POST | `/api/auth/logout` | Não | Encerra sessão |
-| POST | `/api/auth/esqueci-senha` | Não | Solicita recuperação |
-| POST | `/api/auth/redefinir-senha` | Não | Redefine a senha |
-| GET | `/api/filmes` | Sim | Lista filmes de Tom Hanks |
-| GET | `/api/favoritos` | Sim | Lista favoritos |
-| POST | `/api/favoritos/:movieId` | Sim | Adiciona favorito |
-| DELETE | `/api/favoritos/:movieId` | Sim | Remove favorito |
-| GET | `/api/comentarios` | Sim | Lista comentários |
-| GET | `/api/comentarios/:movieId` | Sim | Comentários de um filme |
-| POST | `/api/comentarios/:movieId` | Sim | Adiciona comentário |
-| DELETE | `/api/comentarios/:id` | Sim | Remove comentário |
-
-### Auth Service — interno
-
-| Método | Rota | Descrição |
+| Serviço | Responsabilidade | Acesso/porta |
 |---|---|---|
-| POST | `/auth/cadastro` | Cadastra usuário |
-| POST | `/auth/login` | Valida credenciais e gera JWT |
-| GET | `/auth/validar` | Valida o JWT |
-| POST | `/auth/esqueci-senha` | Gera token e envia o e-mail |
-| POST | `/auth/redefinir-senha` | Valida token e altera senha |
-| GET | `/health` | Verifica o serviço |
+| `catalogo` | Frontend, API pública, TMDB, favoritos, comentários, sessão e proxy administrativo | Único publicado: local `3000:3000`; Portainer `8216:3000` |
+| `auth-service` | Cadastro, autenticação, validação da sessão, papel atual, recuperação de senha e gestão administrativa de usuários | Interno, `3001` |
+| `log-service` | Validação, gravação e consulta de eventos de auditoria | Interno, `3002` |
+| `redis` | Persistência do Stream `auditoria` | Interno, `6379` |
+| `minio` | Fotos de perfil | Interno, `9000`; leitura intermediada pelo catálogo |
 
----
+Não é necessário expor `3001`, `3002` ou `6379` ao host.
 
-## Estrutura do projeto
+### Evolução das atividades
+
+- **Atividade 3:** autenticação desacoplada no `auth-service`, papéis e recuperação de senha. A descrição daquela etapa com catálogo e `auth-service` corresponde à arquitetura histórica, não à composição atual.
+- **Atividade 4:** autorização RBAC aplicada às operações protegidas e moderação de comentários.
+- **Atividade 5:** serviço de auditoria próprio, Redis Streams, consulta administrativa e painel de gestão.
+
+## Serviços e Docker Compose
+
+O Compose local é `docker-compose.yml`; para produção no Portainer, use `docker-compose.portainer.yml`. Ambos definem `catalogo`, `auth-service`, `log-service`, `redis` e `minio` na mesma rede `catalogo-network`.
+
+No ambiente local, apenas o catálogo publica `3000:3000`. No Compose do Portainer, ele publica `8216:3000`, usa `NODE_ENV=production` e recebe configuração por variáveis do ambiente do Portainer: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `TMDB_TOKEN`, `JWT_SECRET` e `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`. `CATALOGO_URL` aponta para a aplicação publicada. Esse arquivo também preserva a configuração DNS do `auth-service` e a rede IPAM existente (`10.88.0.0/24`). Valores secretos não são gravados no Compose nem devem ser colocados no Git.
+
+Variáveis internas relevantes:
+
+```text
+AUTH_SERVICE_URL=http://auth-service:3001
+LOG_SERVICE_URL=http://log-service:3002
+REDIS_URL=redis://redis:6379
+```
+
+Redis usa a imagem `redis:7.4-alpine`, inicia com AOF (`--appendonly yes`) e persiste dados no volume `audit-redis-data`; o volume precisa ser preservado para manter os dados entre recriações do container. O healthcheck executa `redis-cli ping`; o `log-service` aguarda Redis saudável e também possui healthcheck em `/health`. No Compose do Portainer, os cinco serviços usam `restart: unless-stopped`.
+
+O Compose não define container para MariaDB: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME` devem apontar para a instância externa configurada no ambiente. Da mesma forma, TMDB, JWT e SMTP são configurados por variáveis de ambiente.
+
+## Autenticação, sessão e segurança
+
+O `auth-service` gera e valida JWT. No login, o catálogo armazena o token em cookie `HttpOnly`, com `SameSite=Lax`; `Secure` é ativado quando `NODE_ENV=production`. O JWT e o cookie têm duração de **8 horas**, conforme a implementação atual. O logout registra o evento quando possível e limpa o cookie.
+
+O frontend não lê nem armazena o token em `localStorage` ou `sessionStorage`. Abas da mesma origem compartilham o cookie de sessão; ao voltar a ficar visível, o painel administrativo consulta `/api/auth/me` para atualizar a identidade e redirecionar conforme o papel atual.
+
+Em cada validação, o `auth-service` verifica assinatura e validade do JWT e consulta o usuário no MariaDB pelo ID do token. O `id`, nome, e-mail e `role` retornados vêm do estado atual do banco; o papel antigo incluído na emissão do JWT não é a fonte de autorização. Uma alteração de papel pode, portanto, refletir na sessão existente na próxima validação.
+
+Senhas são armazenadas como hash com `bcryptjs`. Segredos e credenciais são fornecidos por variáveis de ambiente; arquivos `.env` reais não devem ser versionados. Os produtores da auditoria não enviam senha, hash, JWT, cookie ou token de recuperação. O `log-service` também recusa campos sensíveis em `detalhes`, inclusive em estruturas aninhadas; isso é uma validação por nomes de campos, não um detector geral de segredos em texto livre.
+
+### Recuperação de senha
+
+O fluxo é intermediado pelo catálogo e processado pelo `auth-service`. O token de recuperação é aleatório, armazenado em `reset_tokens`, expira em 30 minutos e só pode ser usado uma vez. A resposta da solicitação não revela se o e-mail existe. O envio usa as variáveis SMTP `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS` e `MAIL_FROM`; o exemplo de desenvolvimento configura Mailtrap Email Testing.
+
+## RBAC e operações administrativas
+
+Os únicos papéis são `usuario` e `admin`. O cadastro público sempre define `usuario`; o cliente não escolhe `admin`. Autenticação identifica a sessão, enquanto autorização verifica o papel atual no backend. A interface não é a fronteira de segurança.
+
+Um usuário comum pode consultar o catálogo, gerir os próprios favoritos, criar comentários e excluir os próprios comentários. Um administrador pode também excluir comentários alheios para moderação, consultar auditoria e gerenciar os papéis dos usuários.
+
+O gerenciamento de usuários é implementado no `auth-service` e protegido por autenticação e verificação administrativa. A alteração de papel:
+
+- aceita somente `usuario` ou `admin`;
+- não permite alterar o próprio papel;
+- impede rebaixar o último administrador;
+- responde sem alteração quando o usuário já possui o papel solicitado;
+- registra `ROLE_ALTERADA` somente quando o papel realmente muda.
+
+As tentativas autenticadas sem papel suficiente retornam `403` e geram `ACAO_NEGADA`. Falta de autenticação ou sessão inválida retorna `401` e não é registrada como ação negada. A aplicação atualiza a autorização com base no papel consultado no banco, não somente no conteúdo original do JWT.
+
+### Endpoints administrativos
+
+| Método e endpoint público | Acesso | Descrição |
+|---|---|---|
+| `GET /api/admin/usuarios` | Admin | Lista usuários com nome, e-mail e papel |
+| `PATCH /api/admin/usuarios/:id/role` | Admin | Altera o papel do usuário indicado |
+| `GET /api/logs` ou `GET /api/logs?limit=N` | Admin | Consulta eventos de auditoria via catálogo |
+
+O catálogo valida a sessão e o papel antes de encaminhar operações administrativas. O `auth-service` também valida Bearer Token e papel atual nas rotas internas `/auth/admin/usuarios` e `/auth/admin/usuarios/:id/role`.
+
+## Atividade 5 — Logs e auditoria
+
+A auditoria registra quem executou uma ação, qual ação ocorreu, quando ocorreu e o contexto associado; o IP é incluído quando disponível. O log-service centraliza a persistência, em vez de gravar logs de auditoria em arquivos locais dos serviços.
+
+### Evento e Redis Stream
+
+Cada registro pode conter:
+
+| Campo | Significado |
+|---|---|
+| `usuario_id` | ID do usuário responsável, como string no Stream |
+| `acao` | Nome da ação registrada |
+| `timestamp` | Data e hora ISO 8601 normalizada para UTC pelo `log-service` |
+| `ip` | Endereço de origem, quando disponível |
+| `detalhes` | Contexto opcional em objeto JSON |
+
+O timestamp recebido precisa ser ISO 8601 válido com fuso; se não for enviado, o `log-service` define a data/hora atual. O Redis Stream se chama `auditoria`. O serviço grava com `XADD` e consulta os N registros mais recentes com `XREVRANGE`; em seguida, devolve a seleção em ordem cronológica crescente. O AOF e o volume `audit-redis-data` mantêm os dados do Redis entre reinicializações do container.
+
+### Eventos implementados
+
+| Evento | Quando é registrado |
+|---|---|
+| `LOGIN` | Após credenciais confirmadas e JWT gerado |
+| `LOGOUT` | Quando a sessão validada é encerrada |
+| `FILME_FAVORITADO` | Após inserir o favorito |
+| `FILME_DESFAVORITADO` | Quando a remoção realmente exclui o favorito |
+| `COMENTARIO_CRIADO` | Após inserir o comentário |
+| `COMENTARIO_APAGADO` | Após exclusão autorizada de comentário |
+| `ACAO_NEGADA` | Para operação proibida de usuário autenticado |
+| `ROLE_ALTERADA` | Quando o papel de outro usuário é realmente alterado |
+
+Na exclusão de comentário, o proprietário pode remover o próprio conteúdo. Admin pode remover comentário alheio; nesse caso, o evento contém `moderacao: true`. A remoção do próprio comentário, mesmo pelo admin, não é marcada como moderação. A auditoria registra IDs e contexto, não o texto completo do comentário.
+
+Os casos de negação incluem exclusão proibida de comentário, consulta administrativa de logs e gestão administrativa de usuários. O catálogo interrompe uma consulta de logs negada antes de chamar o serviço interno, evitando duplicar `ACAO_NEGADA`. Uma chamada direta autenticada ao GET interno do `log-service` por usuário comum gera o evento específico `CONSULTA_LOGS_INTERNA`. Erros `401` não geram ação negada.
+
+O registro é de melhor esforço: se o `log-service` falha depois que a operação de negócio foi concluída, a falha de auditoria não desfaz a operação. A chamada pode aguardar até dois segundos antes de falhar e emitir aviso no log do serviço chamador; não há fila de reenvio. Em contraste, a consulta administrativa retorna `503` quando o serviço de auditoria necessário está indisponível.
+
+### Consulta administrativa
+
+O navegador consulta o catálogo com cookie HttpOnly. O catálogo valida a sessão e o papel atual e encaminha um Bearer Token ao `log-service`, que consulta novamente o `auth-service` antes de ler o Redis:
+
+```text
+Admin ── GET /api/logs?limit=N + cookie ──► Catálogo
+                                              │ valida sessão e papel atual
+                                              │ Authorization: Bearer <token>
+                                              ▼
+                                         log-service
+                                              │ valida no auth-service
+                                              ▼
+                                      Redis Stream auditoria
+```
+
+| Método e endpoint | Serviço | Regra |
+|---|---|---|
+| `GET /api/logs` | Catálogo | Rota do catálogo; exige sessão e papel `admin` |
+| `GET /api/logs?limit=N` | Catálogo | Repassa o limite para o serviço interno |
+| `GET /eventos` ou `GET /eventos?limit=N` | log-service | Interno; exige Bearer Token válido e papel atual `admin` |
+| `POST /eventos` | log-service | Interno; recebe e valida evento para gravação |
+| `GET /health` | log-service | Indica estado do serviço e conexão Redis |
+
+O limite de leitura padrão é **50**, com faixa de **1 a 100** (inteiros). O retorno inclui `quantidade` e `eventos`. Limite inválido retorna `400`; ausência de sessão ou token inválido retorna `401`; usuário autenticado sem papel admin retorna `403`; indisponibilidade do serviço ou Redis retorna `503`. A rota interna de gravação não exige token na implementação atual e não é publicada no host.
+
+### Painel administrativo
+
+O painel em `/admin.html` fica disponível somente a usuários cujo papel atual seja `admin`. A interface tem três áreas:
+
+#### Visão geral
+
+Apresenta eventos analisados, logins, ações negadas e alterações de acesso referentes à quantidade de eventos carregada naquele momento, além de usuários cadastrados, número de administradores, atividade recente e eventos de segurança/acesso. As métricas não representam necessariamente o histórico total. A lista recente mostra até cinco eventos; a lista de segurança, até três eventos `ACAO_NEGADA` ou `ROLE_ALTERADA`. Totais de usuários usam `GET /api/admin/usuarios` e podem aparecer como indisponíveis se essa consulta falhar.
+
+#### Auditoria
+
+Permite consultar e pesquisar eventos por ação, usuário ou recurso, filtrar pela ação, selecionar 20, 50 ou 100 registros e atualizar a consulta. Exibe data/hora, usuário, ação, contexto, IP e detalhes no drawer. Quando a lista de usuários está disponível, a interface pode apresentar nome e ID; a consulta de auditoria não depende dessa lista. A interface é apenas apresentação: catálogo, log-service e auth-service mantêm as verificações de sessão e autorização no backend.
+
+#### Usuários
+
+Lista nome, e-mail e papel, oferece pesquisa e identifica a própria conta. Admin pode alternar papéis entre `usuario` e `admin`, sujeito às proteções do backend descritas acima. Não há outros papéis nem permissões granulares nesta implementação.
+
+## API do catálogo
+
+Rotas públicas do catálogo incluem:
+
+| Método e endpoint | Acesso/uso |
+|---|---|
+| `POST /api/auth/cadastro` | Cadastro; novo papel sempre `usuario` |
+| `POST /api/auth/login` | Autenticação e emissão do cookie de sessão |
+| `GET /api/auth/me` | Identidade e papel atuais da sessão |
+| `POST /api/auth/logout` | Encerra sessão |
+| `POST /api/auth/esqueci-senha` | Inicia recuperação de senha |
+| `POST /api/auth/redefinir-senha` | Redefine a senha com token válido |
+| `GET /api/filmes` | Catálogo de filmes, com sessão |
+| `GET /api/favoritos`, `POST /api/favoritos/:movieId`, `DELETE /api/favoritos/:movieId` | Consulta e gestão de favoritos da sessão |
+| `GET /api/comentarios`, `GET /api/comentarios/:movieId`, `POST /api/comentarios/:movieId`, `DELETE /api/comentarios/:id` | Consulta, criação e exclusão autorizada de comentários |
+
+Rotas administrativas adicionais estão listadas acima. O frontend não chama diretamente os microsserviços internos.
+
+## Banco de dados e TMDB
+
+O MariaDB guarda usuários, favoritos, comentários e tokens de recuperação. A migração `database/migracao-atividade3.sql` adiciona `role` com padrão `usuario` e a tabela `reset_tokens`. Favoritos e comentários são associados a `usuario_id` obtido da sessão autenticada, não de um ID de proprietário livremente escolhido no frontend.
+
+O catálogo consulta a API do TMDB em tempo de execução para localizar filmes relacionados a Tom Hanks e seus dados, incluindo pôster. Esses dados não são armazenados no MariaDB.
+
+## Estrutura representativa
 
 ```text
 catalogo-filmes/
-│
-├── auth-service/
-│   ├── src/
-│   │   ├── auth.js
-│   │   ├── database.js
-│   │   ├── mailer.js
-│   │   ├── recuperacaoSenha.js
-│   │   └── server.js
-│   ├── .env.example
-│   ├── Dockerfile
-│   └── package.json
-│
-├── database/
-│   └── migracao-atividade3.sql
-│
-├── docs/
-│   └── evidencias/
-│
 ├── public/
-│   ├── index.html
-│   ├── cadastro.html
+│   ├── admin.html
+│   ├── admin.js
 │   ├── catalogo.html
-│   ├── esqueci-senha.html
-│   ├── redefinir-senha.html
-│   └── ...
-│
+│   ├── catalogo.js
+│   └── style.css
 ├── src/
+│   ├── admin.js
+│   ├── auditoria.js
 │   ├── auth.js
 │   ├── comentarios.js
-│   ├── database.js
 │   ├── favoritos.js
-│   ├── filmes.js
+│   ├── logs.js
 │   ├── middlewareAuth.js
 │   └── server.js
-│
-├── .env.example
+├── auth-service/
+│   └── src/
+│       ├── admin.js
+│       ├── auditoria.js
+│       ├── auth.js
+│       ├── gestaoUsuarios.js
+│       ├── middlewareAuth.js
+│       ├── recuperacaoSenha.js
+│       └── server.js
+├── log-service/
+│   ├── src/
+│   │   ├── consulta.js
+│   │   ├── evento.js
+│   │   ├── eventos.js
+│   │   ├── middlewareAuth.js
+│   │   ├── redis.js
+│   │   └── server.js
+│   ├── test/
+│   ├── Dockerfile
+│   └── package.json
+├── database/
+│   └── migracao-atividade3.sql
 ├── docker-compose.yml
-├── Dockerfile
-├── package.json
+├── docker-compose.portainer.yml
 └── README.md
 ```
 
----
+## Configuração e execução local
 
-## Notas de segurança / design
+Pré-requisitos: Docker com Docker Compose, acesso a um MariaDB externo, credencial do TMDB e configuração SMTP para recuperação de senha.
 
-- os filmes são consultados diretamente no TMDB e não são armazenados no banco;
-- as senhas são armazenadas utilizando hash com `bcryptjs`;
-- o JWT é gerado e validado pelo `auth-service`;
-- o JWT possui expiração;
-- o token da sessão é armazenado em cookie `HttpOnly`;
-- o `auth-service` não possui porta publicada;
-- os serviços se comunicam pela rede interna Docker;
-- arquivos `.env` não são versionados;
-- novos usuários recebem `role = usuario`;
-- o `usuario_id` é obtido pela autenticação;
-- favoritos e comentários são filtrados pelo usuário autenticado;
-- a recuperação não revela se o e-mail informado está cadastrado;
-- tokens de recuperação são criptograficamente aleatórios;
-- tokens expiram após 30 minutos;
-- cada token pode ser utilizado somente uma vez.
+Use `.env.example`, `auth-service/.env.example` e `log-service/.env.example` como referência. Preencha localmente `.env` e `auth-service/.env` com seus próprios valores; não versione arquivos reais nem compartilhe segredos. O Compose injeta as URLs internas de serviço e configura Redis sem instalação manual na máquina.
 
----
+Na raiz do projeto:
 
-## Evidências
+```bash
+docker compose up -d --build
+docker compose ps
+```
 
-Evidências da **Atividade 3 — Serviços desacoplados**, demonstrando o fluxo completo de recuperação e redefinição de senha.
+A aplicação local fica em [http://localhost:3000](http://localhost:3000). Apenas o serviço `catalogo` deve mostrar porta publicada no host; os outros serviços ficam disponíveis pela rede interna.
 
-### 1. Tela de login
+Para executar no Portainer, mantenha `docker-compose.portainer.yml` como caminho do Compose da stack e configure as variáveis de ambiente exigidas, incluindo `IMAGE_TAG=sha-<hash completo do commit aprovado no CI/CD>`. Esse arquivo utiliza as imagens publicadas no GHCR, sem build local; configure o acesso ao registro conforme a seção CI/CD. O catálogo será publicado na porta `8216` do host. Não configure mapeamentos de host para as portas 3001, 3002 ou 6379.
 
-A tela de login apresenta a opção **Esqueci minha senha**, utilizada para iniciar o processo de recuperação.
+Verificações internas opcionais:
+
+```bash
+docker compose exec log-service node -e "fetch('http://127.0.0.1:3002/health').then(async r => console.log(r.status, await r.text()))"
+docker compose exec redis redis-cli PING
+docker compose exec redis redis-cli XRANGE auditoria - +
+docker compose exec redis redis-cli XREVRANGE auditoria + - COUNT 20
+```
+
+`XRANGE` percorre o Stream do ID mais antigo ao mais recente. `XREVRANGE` mostra os registros mais novos primeiro; a API inverte o conjunto selecionado para retornar sequência cronológica dentro do limite escolhido.
+
+## Testes disponíveis
+
+Os testes automatizados do projeto estão em `test/admin.test.js`, `auth-service/test/admin.test.js` e `log-service/test/consulta.js`. Execute-os com Node.js:
+
+```bash
+node --test test/admin.test.js
+node --test auth-service/test/admin.test.js
+node --test log-service/test/consulta.js
+```
+
+Eles cobrem, respectivamente, proxy e rotas administrativas do catálogo, gestão de papéis e leitura/autenticação do Stream. `log-service/test/eventos.js` é um roteiro de integração que exige os containers ativos; no PowerShell, pode ser executado assim:
+
+```powershell
+Get-Content log-service/test/eventos.js -Raw | docker compose exec -T log-service node
+```
+
+Os incrementos da Atividade 5 também foram validados com Docker Compose e testes de integração para healthcheck, isolamento das portas, respostas 400/401/403/503, persistência Redis, auditoria de operações e comportamento quando o serviço de logs fica indisponível. Resultados anteriores documentam cenários de teste, não garantem disponibilidade contínua do ambiente externo.
+
+## Demonstração da Atividade 5
+
+### Usuário comum
+
+1. Fazer login com conta de papel `usuario`.
+2. Favoritar um filme e criar um comentário.
+3. Tentar consultar uma operação administrativa sem permissão, como `GET /api/logs`.
+4. Confirmar `403 Forbidden` e o evento `ACAO_NEGADA` correspondente na auditoria.
+
+### Administrador
+
+1. Fazer login com uma conta cujo papel atual seja `admin`.
+2. Abrir o painel, acessar **Auditoria** e consultar os eventos recentes.
+3. Inspecionar a sequência, o contexto e os detalhes no painel.
+
+Uma sequência conceitual possível é `LOGIN`, `FILME_FAVORITADO`, `COMENTARIO_CRIADO` e `ACAO_NEGADA`. IDs e timestamps dependem da execução; não há IDs fixos necessários para a demonstração.
+
+### Evidência — consulta como administrador
+
+A evidência visual da consulta dos logs pelo painel administrativo será adicionada antes da entrega final.
+
+<!--
+![Consulta dos logs de auditoria realizada como administrador](docs/evidencias/atividade-5-logs-admin.png)
+-->
+
+
+## Atividade 6 — Upload e perfil de usuário
+
+A página `/perfil.html`, acessível por **Meu perfil**, apresenta nome, foto, bio e favoritos. Para consultar outro perfil autenticado, use `/perfil.html?id=ID`. A edição aparece somente no próprio perfil; o backend também verifica essa regra.
+
+> A imagem não é armazenada no MariaDB. O arquivo binário é persistido no MinIO e o MariaDB mantém apenas a chave/referência do objeto.
+
+### Estrutura e execução
+
+A migração `database/migracao-atividade6.sql` cria somente `perfis`, com `usuario_id` (chave primária e estrangeira para `usuarios.id`, com exclusão em cascata), `bio VARCHAR(300)` e `foto_chave VARCHAR(500)`. Usa `CREATE TABLE IF NOT EXISTS`, preserva os dados e não recria tabelas anteriores. Favoritos reutilizam a tabela existente e seus IDs do TMDB; os dados visuais dos filmes não são duplicados no MariaDB.
+
+O Compose não aplica essa migração automaticamente. Aplique-a ao banco configurado antes de consultar o perfil. Com o catálogo ativo, no PowerShell:
+
+```powershell
+Get-Content database/migracao-atividade6.sql -Raw | docker compose exec -T catalogo node -e "const db=require('./src/database');let sql='';process.stdin.on('data',c=>sql+=c);process.stdin.on('end',async()=>{try{await db.query(sql);console.log('Migração aplicada.')}catch(e){console.error(e.code);process.exitCode=1}finally{await db.end()}})"
+```
+
+Confirme com `SHOW TABLES LIKE 'perfis';` e `DESCRIBE perfis;`. No Portainer, aplique a migração ao banco correspondente e configure as variáveis abaixo.
+
+| Variável | Uso |
+|---|---|
+| `MINIO_ENDPOINT` | Host; no Compose, `minio` |
+| `MINIO_PORT` | Porta interna; no Compose, `9000` |
+| `MINIO_USE_SSL` | TLS entre backend e armazenamento; `false` na rede interna configurada |
+| `MINIO_ACCESS_KEY` | Credencial fornecida no ambiente, nunca no frontend |
+| `MINIO_SECRET_KEY` | Segredo fornecido no ambiente, nunca no Git |
+| `MINIO_BUCKET` | Bucket dedicado; padrão `perfil-fotos` |
+
+Use `.env.example` como referência. Os Compose fixam o endereço interno do MinIO. O volume `minio-data`, montado em `/data`, mantém os arquivos entre reinicializações/recriações. Preserve esse volume e `audit-redis-data`; não use `down -v` para uma simples atualização.
+
+`minio/Dockerfile` compila o código oficial do MinIO na versão fixada no arquivo. A primeira construção pode demorar. O healthcheck consulta `/minio/health/live`; o console não é publicado. Suba com `docker compose up -d --build` e confira os cinco serviços com `docker compose ps`.
+
+### Upload, propriedade e auditoria
+
+O bucket é único para todas as fotos. As chaves seguem `perfis/{usuarioId}/{uuid}.jpg` (ou `.png`/`.webp`), sem usar o nome original enviado. O backend verifica/cria o bucket no primeiro upload.
+
+1. Validar sessão e propriedade a partir de `req.usuario.id`.
+2. Receber um arquivo no campo `foto`, por `multipart/form-data`: JPEG, PNG ou WebP, até **5 MB** (5 × 1024 × 1024 bytes).
+3. Verificar MIME e decodificar com Sharp, sem confiar somente na extensão; reencodar e remover metadados.
+4. Enviar o objeto ao MinIO e persistir sua chave no MariaDB em transação.
+5. Somente após o commit, remover a foto anterior. Falha na limpeza não invalida a foto nova.
+
+Falha no banco antes do commit provoca rollback e tentativa de limpeza do objeto novo. Se o resultado do commit for incerto, ambas as imagens são preservadas para evitar apagar uma referência válida. **Alterar foto** abre o seletor oculto e inicia o upload após a seleção, com validações e mensagens de andamento/resultado.
+
+| Método e endpoint | Regra |
+|---|---|
+| `GET /api/perfil/me` | Perfil da sessão e favoritos |
+| `GET /api/perfil/:id` | Consulta por usuário autenticado |
+| `PATCH /api/perfil/:id` | Altera somente a própria bio; JSON com `bio`, até 300 caracteres |
+| `POST /api/perfil/:id/foto` | Altera somente a própria foto; multipart com campo `foto` |
+| `GET /api/perfil/fotos/:usuarioId/:arquivo` | Leitura pública da imagem, intermediada pelo catálogo |
+
+A consulta retorna ID, nome, bio, `foto_chave`, `foto_url`, favoritos e indicação de propriedade. O backend compara `Number(req.params.id)` com `Number(req.usuario.id)` e ignora identidade enviada no corpo. Mesmo um administrador não pode editar perfil alheio. Sem sessão: `401`; tentativa alheia: `403`; arquivo/bio inválido: `400`; tamanho excedido: `413`; falha de infraestrutura: `503`.
+
+A auditoria existente registra `PERFIL_ATUALIZADO`, `FOTO_PERFIL_ATUALIZADA` e `ACAO_NEGADA` para tentativa alheia, com recurso `PERFIL`, operação e ID alvo quando pertinente. Não envia imagem, bio, senha, JWT, cookie ou credenciais. Mantém o melhor esforço do `log-service`.
+
+### Leitura pública e alternativa pré-assinada
+
+O bucket permite somente `s3:GetObject` público no prefixo `perfis/`. A escrita permanece restrita ao backend. A URL estável usa `/api/perfil/fotos/...`; o catálogo lê o objeto anonimamente na rede interna, sem entregar credenciais ao navegador.
+
+| Estratégia | Vantagens | Limitações |
+|---|---|---|
+| Bucket com leitura pública (adotado) | Simples, URL estável e fácil uso no frontend; adequado a fotos públicas | Qualquer pessoa que conheça a URL pode acessar a imagem |
+| URL pré-assinada | Maior controle e expiração; adequada a arquivos privados | Mais complexidade e URLs precisam ser regeneradas; desnecessária para fotos públicas neste projeto |
+
+### Arquivos e testes da Atividade 6
+
+- Interface: `public/perfil.html`, `public/perfil.js` e estilos em `public/style.css`.
+- Backend: `src/perfil.js`, `src/fotoPerfil.js`, `src/minio.js` e consulta compartilhada em `src/listarFavoritos.js`.
+- Infraestrutura: `database/migracao-atividade6.sql`, `minio/Dockerfile`, ambos os Compose e `.env.example`.
+- Testes: `test/perfil.test.js`, `test/minio.test.js` e roteiro integrado `test/perfil-integracao.js`.
+
+Com as dependências instaladas na raiz, em `auth-service` e em `log-service`, execute `npm test`. Nesta entrega: **49 testes aprovados, 0 falhas**, incluindo os testes anteriores. Cobrem autenticação, propriedade, favoritos do usuário correto, upload válido/inválido, limite de tamanho, falhas de MinIO/banco e auditoria, usando mocks quando apropriado. O roteiro integrado exige ambiente descartável com banco `catalogo_qa` e serviços de teste; não deve ser executado no banco de produção.
+
+## Demonstração da Atividade 6
+
+### Perfil
+
+1. Fazer login e acessar **Meu perfil**.
+2. Usar **Editar perfil** para salvar uma bio e **Alterar foto** para enviar uma imagem válida.
+3. Favoritar filmes no catálogo e retornar ao perfil.
+4. Confirmar foto realmente carregada, bio e pôsteres dos favoritos; capturar a página.
+5. Para conferir persistência, executar `docker compose restart minio` e recarregar a página quando o serviço estiver saudável.
+
+### Tentativa de editar outro usuário
+
+1. Autenticar como usuário A e identificar o ID real de B (na conta B ou no painel de usuários como administrador).
+2. No console do navegador da sessão A, executar e informar o ID de B:
+
+```javascript
+const idAlvo = Number(prompt('ID do outro usuário'));
+const resposta = await fetch('/api/perfil/' + idAlvo, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ bio: 'Tentativa de edição de outro perfil' })
+});
+console.log(resposta.status, await resposta.json());
+```
+
+3. Confirmar `403 Forbidden` e `Você só pode editar o próprio perfil.`; capturar o console ou a requisição na aba Network.
+4. Opcionalmente, autenticar como administrador, abrir **Auditoria**, atualizar e filtrar `ACAO_NEGADA`. Conferir recurso `PERFIL`, alvo e operação `ATUALIZAR_BIO`.
+
+### Evidência — perfil com foto, bio e favoritos
+
+![Perfil com foto carregada pelo MinIO, bio e filmes favoritos](docs/evidencias/atividade-6-perfil.png)
+
+### Evidência — tentativa recusada de editar outro perfil
+
+![Tentativa de editar outro perfil recusada com 403 Forbidden](docs/evidencias/atividade-6-perfil-403.png)
+
+### Evidências anteriores — autenticação e recuperação de senha
+
+<details>
+<summary>Ver evidências preservadas das atividades anteriores</summary>
 
 ![Tela de login](docs/evidencias/tela-login.png)
-
----
-
-### 2. Tela de recuperação de senha
-
-Ao selecionar **Esqueci minha senha**, o usuário é direcionado para a tela onde informa o e-mail da conta.
-
-![Tela de recuperação de senha](docs/evidencias/recuperar-senha.png)
-
----
-
-### 3. Envio da solicitação de recuperação
-
-Após informar o e-mail, a aplicação envia a solicitação de recuperação.
-
+![Recuperar senha](docs/evidencias/recuperar-senha.png)
 ![Envio da solicitação de recuperação](docs/evidencias/envio-recuperacao.png)
-
----
-
-### 4. Solicitação de recuperação confirmada
-
-Após o processamento, a aplicação informa que, caso o e-mail esteja cadastrado, será enviado um link de recuperação.
-
-![Solicitação de recuperação confirmada](docs/evidencias/email-enviado.png)
-
----
-
-### 5. E-mail recebido no Mailtrap
-
-O `auth-service` gera o token de recuperação e envia o link de redefinição por e-mail utilizando o Mailtrap.
-
-O link possui validade de **30 minutos** e pode ser utilizado apenas uma vez.
-
+![Confirmação de e-mail enviado](docs/evidencias/email-enviado.png)
 ![E-mail recebido no Mailtrap](docs/evidencias/email-mailtrap.png)
+![Redefinição de senha](docs/evidencias/redefinir-senha.png)
+![Senha redefinida](docs/evidencias/senha-redefinida.png)
+![Link de recuperação já utilizado](docs/evidencias/link-utilizado.png)
 
----
+</details>
 
-### 6. Tela de redefinição de senha
+## Atividade extra — Swagger/OpenAPI
 
-O link recebido por e-mail direciona o usuário para a tela de redefinição de senha do catálogo.
+Atividade da disciplina **ISW055 — Introdução à Computação em Nuvem**, professor [@siriani](https://github.com/siriani). A documentação usa OpenAPI 3.0.3, `swagger-jsdoc` e `swagger-ui-express`, com anotações junto às rotas e schemas reutilizáveis.
 
-![Tela de redefinição de senha](docs/evidencias/redefinir-senha.png)
+### Serviços e contratos documentados
 
----
+- **Catálogo (25 operações):** cadastro, login, sessão, logout, recuperação de senha, filmes TMDB, favoritos, comentários, auditoria, administração de usuários e perfil/upload de foto.
+- **Auth-service (9 operações):** health, cadastro, login, validação da sessão, recuperação/redefinição de senha e administração de usuários. As rotas da especificação são as rotas internas reais.
+- Especificações no repositório: [catálogo](docs/openapi/catalogo.json) e [auth-service](docs/openapi/auth.json). Schemas em [components.js](docs/openapi/components.js); contratos nos comentários `@openapi` dos arquivos de rotas.
 
-### 7. Senha redefinida com sucesso
+### Executar e consultar localmente
 
-Após a validação do token, a nova senha é cadastrada com sucesso e o token é marcado como utilizado.
+```bash
+npm ci
+npm run docs:generate
+npm run docs:validate
+npm test
+npm start
+```
 
-![Senha redefinida com sucesso](docs/evidencias/senha-redefinida.png)
+Configure as variáveis já utilizadas pelo projeto e mantenha o MariaDB e os serviços locais acessíveis ao catálogo. No Docker Compose, o catálogo usa `AUTH_SERVICE_URL=http://auth-service:3001` e `LOG_SERVICE_URL=http://log-service:3002`. Auth-service, log-service, Redis e MinIO continuam na rede interna, sem novas portas publicadas. Execute `docker compose up --build` quando o ambiente e as variáveis estiverem preparados. Não use serviços de produção para testar operações de escrita.
 
----
+Com a porta padrão 3000:
 
-### 8. Reutilização do link recusada
+- [Swagger do catálogo](http://localhost:3000/apidocs/).
+- [Swagger do auth-service](http://localhost:3000/apidocs/auth/).
+- Especificações servidas: [catálogo JSON](http://localhost:3000/openapi/catalogo.json) e [auth-service JSON](http://localhost:3000/openapi/auth.json).
 
-Após a utilização do token, uma nova tentativa de redefinir a senha utilizando o mesmo link é recusada.
+É possível escolher outra porta com `PORT`. Na validação desta atividade foi usado `PORT=3010`, com o catálogo em `http://localhost:3010/apidocs/` e o auth-service documentado em `http://localhost:3010/apidocs/auth/`. A especificação pública usa a mesma origem (`servers: /`), sem fixar localhost para produção. A implementação está disponível no ambiente publicado:
 
-![Tentativa de reutilização do link recusada](docs/evidencias/link-utilizado.png)
+- [Swagger do catálogo](https://luana-abrantes-isw055.lapps.studio/apidocs/).
+- [Swagger do auth-service](https://luana-abrantes-isw055.lapps.studio/apidocs/auth/).
 
-## Repositório
+O `.dockerignore` permite copiar somente os arquivos JavaScript de `auth-service/src` para a imagem do catálogo, para leitura das anotações durante a geração da documentação. Não copia o `.env`, as dependências ou outros arquivos do auth-service e não executa esse serviço dentro do catálogo.
 
-https://github.com/Luanaabrantes/catalogo-filmes
+### Sessão e Try it out
 
----
+O catálogo usa o cookie **`token`**, HttpOnly, SameSite=Lax, com duração de oito horas e Secure em produção. Entre com uma conta local em `/login.html`, no mesmo navegador e origem do Swagger, ou execute `POST /api/auth/login` com essa conta no Swagger. O navegador recebe e envia o cookie automaticamente. Não leia o cookie com JavaScript, não o cole em **Authorize** e não informe Bearer nas rotas públicas.
+
+Para uma demonstração sem dados sensíveis e sem alterar registros:
+
+1. Abra o Swagger local sem sessão autenticada.
+2. Expanda **Autenticação → GET /api/auth/me**.
+3. Clique em **Try it out → Execute**.
+4. Confira em **Server response** o HTTP **401** e o corpo `{"mensagem":"Usuário não autenticado."}`. Esse é um retorno real esperado para sessão ausente; não representa um login bem-sucedido.
+5. Com uma sessão local válida, a mesma consulta retorna **200** com `usuario` (`id`, `nome`, `email`, `role`). Esse cenário requer auth-service e banco local disponíveis.
+
+O upload é `POST /api/perfil/{id}/foto`, `multipart/form-data`, campo único **`foto`**, JPEG/PNG/WebP estático de até **5 MiB** e **25 megapixels**. A bio aceita até 300 pontos de código Unicode após trim. A leitura de outro perfil é permitida a usuários autenticados; edição e upload exigem o proprietário, inclusive para administradores. O papel comum real é `usuario`; as operações administrativas exigem `admin`. Falta de autenticação é **401**; falta de permissão é **403**.
+
+### Rotas internas e proxies existentes
+
+O Swagger em `/apidocs/auth/` apresenta os contratos internos, mas o **Try it out é desabilitado nessa página**: o navegador não consegue acessar o endereço Docker `auth-service:3001`. Nenhuma operação interna foi exposta apenas para habilitar a documentação.
+
+| Rota interna | Proxy existente no catálogo |
+| --- | --- |
+| `POST /auth/cadastro` | `POST /api/auth/cadastro` |
+| `POST /auth/login` | `POST /api/auth/login` (transforma JWT em cookie; não retorna o token no corpo) |
+| `GET /auth/validar` | `GET /api/auth/me` |
+| `POST /auth/esqueci-senha` | `POST /api/auth/esqueci-senha` |
+| `POST /auth/redefinir-senha` | `POST /api/auth/redefinir-senha` |
+| `GET /auth/admin/usuarios` | `GET /api/admin/usuarios` |
+| `PATCH /auth/admin/usuarios/{id}/role` | `PATCH /api/admin/usuarios/{id}/role` |
+| `GET /health` | Sem proxy público |
+
+Teste os proxies no Swagger do catálogo com cookie. Para uma chamada interna sem credenciais, dentro da rede Docker:
+
+```bash
+docker compose exec catalogo node -e "fetch('http://auth-service:3001/health').then(async r => console.log(r.status, await r.json()))"
+```
+
+`GET /auth/validar` e `/auth/admin/*` exigem `Authorization: Bearer` com um JWT de teste obtido pelo login interno; as demais rotas internas não usam Bearer. Para testá-las diretamente, execute um cliente dentro da rede Docker, mantenha os tokens apenas na memória e não os inclua em prints, comandos versionados ou exemplos. Em `/live`, sucesso significa somente processo ativo. `/health` verifica readiness, incluindo MariaDB e SMTP no auth-service, retornando 503 quando uma dependência falha.
+
+### Evidência e validação
+
+Foram executados os testes existentes, a validação OpenAPI e a comparação exata das especificações com as rotas reais dos dois serviços. No ambiente publicado, foi realizada a chamada **GET `/api/filmes`** pelo **Try it out → Execute** do Swagger do catálogo, com resposta **HTTP 200** e os dados dos filmes. O teste pelo navegador foi demonstrado na API pública do catálogo. O auth-service permanece na rede interna Docker, com Try it out desativado na página de suas rotas internas.
+
+A execução final de `npm test` aprovou **52 testes** (49 existentes e 3 de documentação). As duas especificações passaram no validador OpenAPI. A imagem Docker local também foi testada em um contêiner temporário sem rede externa nem portas publicadas: os dois Swaggers e os dois JSONs retornaram 200, e a consulta de sessão sem cookie retornou 401. Nenhum `.env` foi copiado para a imagem. O teste de sessão autenticada com todos os serviços e banco local permanece para conferência em um ambiente completo. O `npm audit` reportou sete avisos em dependências já presentes no lockfile anterior (cinco moderados, um alto e um crítico), sem atualização dessas dependências nesta atividade.
+
+![GET /api/filmes executado no Swagger publicado com HTTP 200](docs/evidencias/atividade-extra-swagger.png)
+
+Execução real do GET `/api/filmes` pelo Swagger do catálogo no ambiente publicado, com HTTP 200 e dados dos filmes.
+
+![Endpoints internos do auth-service documentados no Swagger](docs/evidencias/atividade-extra-swagger-auth.png)
+
+Documentação dos endpoints do auth-service, com Try it out desativado.
+
+Implementação registrada no [commit 780dd4f](https://github.com/Luanaabrantes/catalogo-filmes/commit/780dd4f37f3c13471a8e285176372c805753b593), em 07/10/2026 às 21:15:01 (UTC−03:00).
+
+Após mudar contratos ou schemas, execute novamente `npm run docs:generate`, `npm run docs:validate` e `npm test`. As verificações de documentação também detectam exportações desatualizadas e diferenças entre rotas documentadas e implementadas.
+
+## Atividade extra — CI/CD
+
+Atividade da disciplina ISW055, professor [@siriani](https://github.com/siriani). Modalidade inicial **quase automático**: testes, builds e publicação automáticos; atualização manual da stack no Portainer. A automação completa do deploy permanece pendente.
+
+O workflow [cicd.yml](.github/workflows/cicd.yml) executa em push e pull request. Instala as dependências com `npm ci` na raiz, no auth-service e no log-service, executa `npm test` e `npm run docs:validate`, constrói e verifica as quatro imagens. Uma falha impede o job de publicação. Somente push para `atividade-extra-cicd` publica no GHCR as mesmas imagens verificadas, sem reconstrução.
+
+Imagens publicadas pelo pipeline:
+
+- `ghcr.io/luanaabrantes/catalogo-filmes-catalogo`
+- `ghcr.io/luanaabrantes/catalogo-filmes-auth-service`
+- `ghcr.io/luanaabrantes/catalogo-filmes-log-service`
+- `ghcr.io/luanaabrantes/catalogo-filmes-minio`
+
+Cada imagem recebe `latest`, `sha-<hash completo do commit>` e o label `org.opencontainers.image.revision`. Para implantação e rollback, use a tag SHA correspondente à execução aprovada, evitando `latest`.
+
+### Portainer e acesso ao GHCR
+
+O pipeline autentica com `secrets.GITHUB_TOKEN`, fornecido automaticamente pelo GitHub Actions, e usa `packages: write` somente no job de publicação. Esse token não é uma variável da aplicação nem deve ser copiado para o Portainer. Nenhuma credencial da aplicação é fornecida durante o build.
+
+Confira a visibilidade dos quatro pacotes em GitHub → Packages. Para pull sem autenticação, torne-os públicos nas configurações dos pacotes, se desejado. Se permanecerem privados, configure o registro `ghcr.io` no Portainer com uma credencial de leitura autorizada (`read:packages`), sem inseri-la no Compose ou no repositório.
+
+Use [docker-compose.portainer.yml](docker-compose.portainer.yml) na **mesma stack existente**, mantendo o caminho já configurado no Portainer, o nome da stack e seus volumes. Esse arquivo utiliza as imagens GHCR, sem build local; `docker-compose.cicd.yml` mantém a mesma configuração como referência e não precisa substituir o caminho da stack. Defina `IMAGE_TAG=sha-<hash completo do commit aprovado>` nas variáveis do Portainer. O Compose exige essa variável; confira que o valor começa com `sha-` e contém os 40 caracteres do hash. Preserve os valores existentes de banco, TMDB, JWT, SMTP e MinIO, fornecidos somente pelo Portainer. Não remova a stack ou os volumes `minio-data` e `audit-redis-data`: eles preservam as fotos e os eventos. A porta pública permanece `8216:3000`; serviços internos, rede, healthchecks e Redis com AOF permanecem iguais ao Compose do Portainer.
+
+Após conferir a execução verde e o acesso às quatro imagens, atualize manualmente a stack solicitando o pull das imagens com a tag SHA. Verifique os serviços e o funcionamento da aplicação. Para rollback, restaure `IMAGE_TAG` para uma tag SHA anterior aprovada e atualize a mesma stack, preservando os volumes e as variáveis. Rollback de imagem não desfaz alterações nos dados.
+
+### Validação e evidências
+
+A [execução 37709376462 do GitHub Actions](https://github.com/Luanaabrantes/catalogo-filmes/actions/runs/37709376462) concluiu os jobs de verificação e publicação com sucesso. Os 52 testes e a validação das duas especificações OpenAPI passaram; as quatro imagens foram construídas, verificadas e publicadas com `latest` e `sha-24abe30d9245ec177ea96343e5d6ee5eb4cf2bcb`. Essa tag identifica o commit validado nesta execução e pode ser usada no Portainer. Nenhuma atualização do ambiente de produção foi realizada nesta etapa.
+
+Print do container no Portainer: **pendente**, arquivo previsto `docs/evidencias/atividade-extra-cicd-container.png`. A imagem será incluída somente após a atualização manual e sua captura. Deploy completamente automático: **pendente**.
+
+## Atividade extra — Observabilidade: health checks e métricas
+
+Atividade ISW055, professor [@siriani](https://github.com/siriani). Implementada a partir de `atividade-extra-cicd`, preservando perfil/upload, Swagger e o fluxo de publicação GHCR e atualização manual no Portainer.
+
+### Liveness e readiness
+
+Os três serviços Node.js expõem `GET /live` (HTTP 200 quando o processo responde, sem consultar dependências) e `GET /health` (HTTP 200 pronto, HTTP 503 se uma dependência falhar). Os probes executam em paralelo com prazo de dois segundos; conexões SQL são descartáveis, têm timeouts de conexão/consulta e são encerradas. HTTP usa timeout de 1,8 segundo, SMTP usa timeouts de 700 ms e Redis usa PING com prazo de 1,5 segundo. As respostas mostram somente nomes de dependências e `ok`/`indisponivel`, sem hosts, credenciais ou mensagens internas.
+
+| Serviço | Dependências verificadas por `/health` |
+|---|---|
+| Catálogo | MariaDB (`SELECT 1`), `/health` do auth-service, readiness do MinIO e consulta GET autenticada da configuração TMDB |
+| Auth-service | MariaDB (`SELECT 1`) e conexão/autenticação SMTP (`verify`, sem enviar e-mail) |
+| Log-service | Redis conectado com `PING`/`PONG` e readiness do auth-service, necessário à consulta protegida dos eventos |
+
+A gravação da auditoria continua de melhor esforço: catálogo e auth-service não dependem de `/health` do log-service, evitando um ciclo e preservando login, favoritos e comentários quando a auditoria falha. Não há escrita de dados ou envio de e-mail pelos probes. Readiness detecta disponibilidade das dependências; não substitui testes de migrações ou de todas as funcionalidades.
+
+Os Dockerfiles e os três Compose existentes usam `/health`, com intervalo de cinco segundos, três falhas consecutivas e período inicial de 20 segundos. A falha altera o estado para `unhealthy`; o healthcheck não reinicia automaticamente o processo. O cliente Redis existente reconecta, permitindo recuperar `healthy` após a volta do Redis. Portas, redes, volumes, variáveis e seleção das imagens por `IMAGE_TAG` foram preservados. O workflow mantém publicação exclusivamente em push para `atividade-extra-cicd`; a branch de observabilidade executa verificações, sem publicar ou atualizar a produção.
+
+### Métricas do catálogo
+
+`GET /metrics` expõe o formato Prometheus usando `prom-client` 15. `http_requisicoes_total` conta requisições e `http_requisicao_duracao_segundos` registra latência em histograma, ambos por `metodo`, `rota` e `status`. Rotas usam templates, por exemplo `/api/perfil/:id`, sem IDs ou query strings. Rotas não mapeadas usam `/nao-mapeada`; erros de parsing e respostas 4xx/5xx também são contados. Conexões interrompidas usam 499. A própria consulta `/metrics` aparece na coleta seguinte. Não são registrados usuário, IP, cookie, token ou corpo. A biblioteca solicitada foi mantida na versão 15; o npm informa que versões futuras usam o nome `@prometheus-io/client`.
+
+Swagger e exportações JSON incluem `/health`, `/live` e `/metrics` do catálogo e `/health` e `/live` internos do auth-service. Não foram publicados proxies novos para os serviços internos.
+
+### Executar e validar sem tocar na produção
+
+Na raiz, execute `npm ci`, `npm ci --prefix auth-service`, `npm ci --prefix log-service`, `npm test` e `npm run docs:validate`. O laboratório usa uma stack separada, sem portas públicas, com MariaDB, SMTP de teste, Redis e MinIO próprios. O preparador gera credenciais descartáveis em `tmp/observabilidade/.env` e utiliza somente o token TMDB já configurado em `.env` para uma consulta GET de leitura. Esse arquivo é excluído do build e deve permanecer fora do Git. Não imprima seu conteúdo.
+
+```powershell
+node scripts/preparar-observabilidade-test.js
+docker compose --env-file tmp/observabilidade/.env -p observabilidade-qa -f docker-compose.observabilidade-test.yml up -d --build
+node scripts/validar-observabilidade-docker.js
+```
+
+Não execute novamente o preparador com os volumes do laboratório já inicializados: ele gera outra senha. Para reutilizar a stack, mantenha o arquivo de ambiente original. O script aguarda todos os estados healthy, consulta `/health` e `/live`, para **somente o Redis do laboratório**, confirma `unhealthy` e HTTP 503, restaura o Redis e confirma recuperação sem reiniciar o log-service. Também consulta erros reais e verifica as métricas por template. O SMTP é real no laboratório, mas é Mailpit; não é uma validação do Mailtrap de produção.
+
+### Evidências e reprodução da validação
+
+Use somente o projeto `observabilidade-qa`. Em PowerShell, defina:
+
+```powershell
+$qaCompose = @('--env-file', 'tmp/observabilidade/.env', '-p', 'observabilidade-qa', '-f', 'docker-compose.observabilidade-test.yml')
+docker compose @qaCompose ps
+```
+
+1. Aguarde os serviços da aplicação, Redis, MinIO e MariaDB `healthy`. Capture a listagem sem abrir variáveis de ambiente: `docs/prints/observabilidade-healthy.png`.
+2. Execute os comandos abaixo, aguarde aproximadamente 20 segundos e confirme `unhealthy` no log-service. Capture a listagem e HTTP 503 como `docs/prints/observabilidade-redis-unhealthy.png`:
+
+```powershell
+docker compose @qaCompose stop -t 3 redis
+docker compose @qaCompose ps
+docker compose @qaCompose exec -T log-service node -e "fetch('http://127.0.0.1:3002/health').then(async r => console.log(r.status, await r.json()))"
+docker compose @qaCompose exec -T log-service node -e "fetch('http://127.0.0.1:3002/live').then(async r => console.log(r.status, await r.json()))"
+docker compose @qaCompose start redis
+```
+
+3. Aguarde a recuperação automática para `healthy` e execute os comandos abaixo. Capture contador e histograma como `docs/prints/observabilidade-metrics.png`:
+
+```powershell
+docker compose @qaCompose exec -T catalogo node -e "Promise.all(['/api/perfil/123','/api/perfil/456','/rota-inexistente'].map(p => fetch('http://127.0.0.1:3000'+p))).then(() => console.log('Requisições de teste concluídas'))"
+docker compose @qaCompose exec -T catalogo node -e "fetch('http://127.0.0.1:3000/metrics').then(async r => console.log(r.status, await r.text()))"
+```
+
+Para encerrar somente o laboratório, execute `docker compose @qaCompose down` (sem `-v`, preservando seus dados). As quatro capturas da validação estão apresentadas abaixo. Prometheus/Grafana e implantação em produção não foram realizados.
+
+Validação concluída no laboratório: **56 testes automatizados aprovados, zero falhas**, duas especificações OpenAPI válidas e quatro imagens construídas. Catálogo, auth-service, log-service, MariaDB, Redis e MinIO ficaram healthy. Ao parar somente o Redis, o log-service passou a unhealthy, `/health` retornou 503 e `/live` retornou 200; o catálogo continuou pronto. Após restaurar o Redis, o log-service voltou a healthy sem reinício, confirmado pela data de início do mesmo container. As métricas reais registraram contador, histograma, respostas 401/404 e o template `/api/perfil/:id`, sem IDs nos labels. Os quatro testes novos também verificam 403, 500, JSON inválido, timeout e ausência de detalhes sensíveis. As capturas documentam os estados de saúde e as métricas do laboratório isolado.
+
+Implementação: [commit d672301](https://github.com/Luanaabrantes/catalogo-filmes/commit/d672301f5defa185e96ba3118f2605ca12057cd2), em 07/10/2026 às 23:15:00 (UTC−03:00). [Execução aprovada no GitHub Actions](https://github.com/Luanaabrantes/catalogo-filmes/actions/runs/37716954218).
+
+![Serviços do laboratório com health checks em estado healthy.](docs/prints/observabilidade-healthy.png)
+
+Serviços do laboratório com health checks em estado healthy.
+
+![Redis interrompido: log-service unhealthy, /health com HTTP 503 e /live com HTTP 200.](docs/prints/observabilidade-redis-unhealthy.png)
+
+Redis interrompido: log-service unhealthy, /health com HTTP 503 e /live com HTTP 200.
+
+![Recuperação do log-service para healthy após restaurar o Redis, sem reiniciar o serviço de logs.](docs/prints/observabilidade-recuperacao.png)
+
+Recuperação do log-service para healthy após restaurar o Redis, sem reiniciar o serviço de logs.
+
+![Endpoint /metrics com HTTP 200, contador de requisições e histograma de latência por método, rota e status.](docs/prints/observabilidade-metrics.png)
+
+Endpoint /metrics com HTTP 200, contador de requisições e histograma de latência por método, rota e status.
+
+## Tecnologias
+
+Node.js, Express, JavaScript, HTML, CSS, MariaDB, MySQL2, `bcryptjs`, `jsonwebtoken`, Nodemailer, API TMDB, Redis, Redis Streams, MinIO, Multer, Sharp, Docker e Docker Compose.
+
+## Links
+
+
+- **Aplicação:** [https://luana-abrantes-isw055.lapps.studio/](https://luana-abrantes-isw055.lapps.studio/)
+- **Repositório:** [https://github.com/Luanaabrantes/catalogo-filmes](https://github.com/Luanaabrantes/catalogo-filmes)
+- **Professor:** [@siriani](https://github.com/siriani)
 
 Desenvolvido por **Luana Abrantes** para a disciplina **ISW055 — Introdução à Computação em Nuvem**.

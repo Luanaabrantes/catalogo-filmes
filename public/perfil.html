@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfil | Catálogo de Filmes</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="perfil.js" defer></script>
+</head>
+<body class="catalogo-page perfil-page">
+    <header>
+        <div><h1>Catálogo de Filmes</h1><p>Filmes com Tom Hanks</p></div>
+        <nav aria-label="Navegação"><a class="catalogo-admin-link" href="/catalogo.html">Explorar filmes</a><a class="catalogo-admin-link" href="/perfil.html" aria-current="page">Meu perfil</a></nav>
+    </header>
+    <main>
+        <p class="perfil-caminho"><a href="/catalogo.html">Catálogo</a><span aria-hidden="true"> / </span>Perfil</p>
+        <p id="statusPerfil" role="status" aria-live="polite">Carregando perfil...</p>
+        <button id="tentarNovamente" class="admin-action-button" hidden>Tentar novamente</button>
+        <div id="conteudoPerfil" hidden>
+            <section class="perfil-cartao" aria-labelledby="perfilNome">
+                <div class="perfil-capa">
+                    <div class="perfil-capa-texto"><span>UM OLHAR, MUITAS HISTÓRIAS</span><p>O cinema faz parte de quem somos.</p></div>
+                    <svg class="perfil-capa-icone" viewBox="0 0 80 80" fill="none" aria-hidden="true"><rect x="12" y="12" width="56" height="56" rx="12" stroke="currentColor" stroke-width="1.5"/><path d="M28 12v56M52 12v56M12 28h16m-16 24h16m24-24h16M52 52h16" stroke="currentColor" stroke-width="1.5"/><path d="m36 32 12 8-12 8V32Z" fill="currentColor"/></svg>
+                </div>
+                <div class="perfil-identidade">
+                    <div class="perfil-avatar" id="avatar"><span id="iniciais" aria-hidden="true"></span><img id="fotoPerfil" alt="Foto de perfil" hidden></div>
+                    <div class="perfil-apresentacao"><p class="perfil-eyebrow">PERFIL DE CINEMA</p><h2 id="perfilNome"></h2><p id="perfilBio"></p></div>
+                    <div id="acoesPerfil" class="perfil-acoes" hidden>
+                        <button id="editarBio" type="button" class="admin-action-button perfil-botao-editar"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14 5 5 5M4 20l5-1L20 8a2.1 2.1 0 0 0-5-5L4 14v6Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Editar perfil</button>
+                        <button id="trocarFoto" type="button" class="admin-action-button admin-primary-button perfil-upload" aria-controls="arquivoFoto" aria-describedby="ajudaFoto"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 6l1-2h6l1 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.7"/></svg>Alterar foto</button>
+                        <input id="arquivoFoto" type="file" accept="image/jpeg,image/png,image/webp" aria-labelledby="trocarFoto" aria-describedby="ajudaFoto" hidden>
+                        <small id="ajudaFoto">JPG, PNG ou WebP · até 5 MB</small>
+                    </div>
+                </div>
+                <form id="formBio" class="perfil-editor" hidden>
+                    <label for="bio">Um pouco sobre você</label>
+                    <textarea id="bio" maxlength="300" rows="3" placeholder="Que histórias fazem parte da sua vida?"></textarea>
+                    <div><span id="contadorBio">0 / 300</span><button type="button" id="cancelarBio" class="admin-action-button">Cancelar</button><button type="submit" class="admin-action-button admin-primary-button">Salvar bio</button></div>
+                </form>
+                <p id="statusEdicao" class="perfil-feedback" role="status" aria-live="polite"></p>
+            </section>
+            <section class="perfil-favoritos" aria-labelledby="tituloFavoritos">
+                <div class="perfil-secao"><div><p class="perfil-eyebrow">HISTÓRIAS PARA REVISITAR</p><h2 id="tituloFavoritos">Filmes favoritos <span id="totalFavoritos">0</span></h2></div><a class="perfil-explorar" href="/catalogo.html">Explorar catálogo <span aria-hidden="true">↗</span></a></div>
+                <p id="statusFavoritos" role="status">Carregando favoritos...</p>
+                <div id="favoritosPerfil" class="lista-filmes"></div>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

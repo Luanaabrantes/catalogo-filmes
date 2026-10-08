@@ -35,6 +35,9 @@ async function verificarUsuario() {
             await resposta.json();
 
 
+        document.getElementById('catalogoAdminBadge').hidden = dados.usuario.role !== 'admin';
+        document.getElementById('catalogoAdminLink').hidden = dados.usuario.role !== 'admin';
+
         nomeUsuario.textContent =
             `Olá, ${dados.usuario.nome}`;
 

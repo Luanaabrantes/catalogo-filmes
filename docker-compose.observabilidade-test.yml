@@ -1,0 +1,86 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: ${QA_PASSWORD:?Gere o ambiente de teste}
+      MARIADB_DATABASE: catalogo_qa
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes: [qa-mariadb:/var/lib/mysql]
+  smtp:
+    image: axllent/mailpit:v1.29
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+  auth-service:
+    build: ./auth-service
+    environment:
+      PORT: 3001
+      DB_HOST: mariadb
+      DB_USER: root
+      DB_PASSWORD: ${QA_PASSWORD}
+      DB_NAME: catalogo_qa
+      JWT_SECRET: ${QA_PASSWORD}
+      MAIL_HOST: smtp
+      MAIL_PORT: 1025
+      MAIL_USER: qa
+      MAIL_PASS: ${QA_PASSWORD}
+      MAIL_FROM: qa@example.invalid
+      CATALOGO_URL: http://catalogo:3000
+      LOG_SERVICE_URL: http://log-service:3002
+    depends_on:
+      mariadb: {condition: service_healthy}
+      smtp: {condition: service_started}
+  catalogo:
+    build: .
+    environment:
+      PORT: 3000
+      DB_HOST: mariadb
+      DB_USER: root
+      DB_PASSWORD: ${QA_PASSWORD}
+      DB_NAME: catalogo_qa
+      AUTH_SERVICE_URL: http://auth-service:3001
+      LOG_SERVICE_URL: http://log-service:3002
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: qa-observabilidade
+      MINIO_SECRET_KEY: ${QA_PASSWORD}
+      TMDB_TOKEN: ${TMDB_TOKEN}
+    depends_on:
+      auth-service: {condition: service_started}
+      minio: {condition: service_started}
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --appendonly, 'yes']
+    volumes: [qa-redis:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+  log-service:
+    build: ./log-service
+    environment:
+      PORT: 3002
+      REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:3001
+    depends_on:
+      redis: {condition: service_healthy}
+  minio:
+    build: ./minio
+    environment:
+      MINIO_ROOT_USER: qa-observabilidade
+      MINIO_ROOT_PASSWORD: ${QA_PASSWORD}
+    volumes: [qa-minio:/data]
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/ready]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+volumes:
+  qa-mariadb:
+  qa-redis:
+  qa-minio:

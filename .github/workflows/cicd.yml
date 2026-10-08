@@ -1,0 +1,79 @@
+name: CI/CD — imagens GHCR
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            auth-service/package-lock.json
+            log-service/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix auth-service
+      - run: npm ci --prefix log-service
+      - run: npm test
+      - run: npm run docs:validate
+      - uses: docker/setup-buildx-action@v3
+      - name: Construir e verificar as quatro imagens sem credenciais
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in catalogo auth-service log-service minio; do
+            context="$service"
+            if [ "$service" = catalogo ]; then context=.; fi
+            docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "ci-$service" "$context"
+            test "$(docker image inspect "ci-$service" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$GITHUB_SHA"
+            docker run --rm --network none --entrypoint sh "ci-$service" -c 'test -z "$(find /app -type f \( -name ".env" -o -name ".env.*" -o -name "*.pem" -o -name "*.key" \) 2>/dev/null)"'
+          done
+          docker run --rm --network none ci-catalogo node -e "const {gerar}=require('./src/openapi'); for(const s of ['catalogo','auth']) { if(!Object.keys(gerar(s).paths).length) process.exit(1); }"
+          docker run --rm --network none ci-auth-service node -e "require('express');require('jsonwebtoken');require('mysql2');"
+          docker run --rm --network none ci-log-service node -e "require('express');require('redis');"
+          docker run --rm --network none ci-minio --version
+          docker save ci-catalogo ci-auth-service ci-log-service ci-minio -o imagens.tar
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/atividade-extra-cicd'
+        with:
+          name: imagens-verificadas
+          path: imagens.tar
+          retention-days: 1
+  publicar:
+    needs: verificar
+    if: github.event_name == 'push' && github.ref == 'refs/heads/atividade-extra-cicd'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: imagens-verificadas
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publicar somente as imagens verificadas
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker load -i imagens.tar
+          namespace="${GITHUB_REPOSITORY_OWNER,,}"
+          for service in catalogo auth-service log-service minio; do
+            image="ghcr.io/$namespace/catalogo-filmes-$service"
+            docker tag "ci-$service" "$image:sha-$GITHUB_SHA"
+            docker tag "ci-$service" "$image:latest"
+            docker push "$image:sha-$GITHUB_SHA"
+            docker push "$image:latest"
+          done
