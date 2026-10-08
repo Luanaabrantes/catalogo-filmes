@@ -8,36 +8,14 @@ const PORT = process.env.PORT || 3002;
 
 app.use('/eventos', require('./eventos'));
 
-app.get('/health', async (req, res) => {
-    let timeout;
-
-    try {
-        if (!redis.isReady) {
-            throw new Error('Redis indisponível');
-        }
-
-        const resposta = await Promise.race([
-            redis.ping(),
-            new Promise((resolve, reject) => {
-                timeout = setTimeout(() => reject(new Error('Timeout Redis')), 1500);
-            })
-        ]);
-
-        if (resposta !== 'PONG') {
-            throw new Error('Resposta inesperada do Redis');
-        }
-
-        res.json({ servico: 'log-service', status: 'ok', redis: 'ok' });
-    } catch {
-        res.status(503).json({
-            servico: 'log-service',
-            status: 'indisponivel',
-            redis: 'indisponivel'
-        });
-    } finally {
-        clearTimeout(timeout);
-    }
-});
+const { readiness, limitar, http } = require('./saude');
+app.get('/live', (req, res) => res.json({ servico: 'log-service', status: 'ok' }));
+app.get('/health', readiness('log-service', {
+    redis: async () => {
+        if (!redis.isReady || await limitar(() => redis.ping(), 1500) !== 'PONG') throw new Error('indisponivel');
+    },
+    autenticacao: () => http(`${process.env.AUTH_SERVICE_URL}/health`)
+}));
 
 redis.connect().catch(() => {
     console.error('Não foi possível iniciar a conexão com Redis.');

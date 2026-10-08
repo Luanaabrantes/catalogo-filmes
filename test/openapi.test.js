@@ -8,6 +8,7 @@ const { gerar } = require('../src/openapi');
 
 const rotas = {
     catalogo: {
+        'src/server.js': '',
         'src/auth.js': '/api/auth', 'src/filmes.js': '/api/filmes',
         'src/favoritos.js': '/api/favoritos', 'src/comentarios.js': '/api/comentarios',
         'src/logs.js': '/api/logs', 'src/admin.js': '/api/admin', 'src/perfil.js': '/api/perfil',

@@ -463,8 +463,8 @@ Atividade da disciplina **ISW055 — Introdução à Computação em Nuvem**, pr
 
 ### Serviços e contratos documentados
 
-- **Catálogo (22 operações):** cadastro, login, sessão, logout, recuperação de senha, filmes TMDB, favoritos, comentários, auditoria, administração de usuários e perfil/upload de foto.
-- **Auth-service (8 operações):** health, cadastro, login, validação da sessão, recuperação/redefinição de senha e administração de usuários. As rotas da especificação são as rotas internas reais.
+- **Catálogo (25 operações):** cadastro, login, sessão, logout, recuperação de senha, filmes TMDB, favoritos, comentários, auditoria, administração de usuários e perfil/upload de foto.
+- **Auth-service (9 operações):** health, cadastro, login, validação da sessão, recuperação/redefinição de senha e administração de usuários. As rotas da especificação são as rotas internas reais.
 - Especificações no repositório: [catálogo](docs/openapi/catalogo.json) e [auth-service](docs/openapi/auth.json). Schemas em [components.js](docs/openapi/components.js); contratos nos comentários `@openapi` dos arquivos de rotas.
 
 ### Executar e consultar localmente
@@ -527,7 +527,7 @@ Teste os proxies no Swagger do catálogo com cookie. Para uma chamada interna se
 docker compose exec catalogo node -e "fetch('http://auth-service:3001/health').then(async r => console.log(r.status, await r.json()))"
 ```
 
-`GET /auth/validar` e `/auth/admin/*` exigem `Authorization: Bearer` com um JWT de teste obtido pelo login interno; as demais rotas internas não usam Bearer. Para testá-las diretamente, execute um cliente dentro da rede Docker, mantenha os tokens apenas na memória e não os inclua em prints, comandos versionados ou exemplos. Em `/health`, sucesso significa processo ativo, não teste de conexão com o banco.
+`GET /auth/validar` e `/auth/admin/*` exigem `Authorization: Bearer` com um JWT de teste obtido pelo login interno; as demais rotas internas não usam Bearer. Para testá-las diretamente, execute um cliente dentro da rede Docker, mantenha os tokens apenas na memória e não os inclua em prints, comandos versionados ou exemplos. Em `/live`, sucesso significa somente processo ativo. `/health` verifica readiness, incluindo MariaDB e SMTP no auth-service, retornando 503 quando uma dependência falha.
 
 ### Evidência e validação
 
@@ -577,6 +577,73 @@ Após conferir a execução verde e o acesso às quatro imagens, atualize manual
 A [execução 37709376462 do GitHub Actions](https://github.com/Luanaabrantes/catalogo-filmes/actions/runs/37709376462) concluiu os jobs de verificação e publicação com sucesso. Os 52 testes e a validação das duas especificações OpenAPI passaram; as quatro imagens foram construídas, verificadas e publicadas com `latest` e `sha-24abe30d9245ec177ea96343e5d6ee5eb4cf2bcb`. Essa tag identifica o commit validado nesta execução e pode ser usada no Portainer. Nenhuma atualização do ambiente de produção foi realizada nesta etapa.
 
 Print do container no Portainer: **pendente**, arquivo previsto `docs/evidencias/atividade-extra-cicd-container.png`. A imagem será incluída somente após a atualização manual e sua captura. Deploy completamente automático: **pendente**.
+
+## Atividade extra — Observabilidade: health checks e métricas
+
+Atividade ISW055, professor [@siriani](https://github.com/siriani). Implementada a partir de `atividade-extra-cicd`, preservando perfil/upload, Swagger e o fluxo de publicação GHCR e atualização manual no Portainer.
+
+### Liveness e readiness
+
+Os três serviços Node.js expõem `GET /live` (HTTP 200 quando o processo responde, sem consultar dependências) e `GET /health` (HTTP 200 pronto, HTTP 503 se uma dependência falhar). Os probes executam em paralelo com prazo de dois segundos; conexões SQL são descartáveis, têm timeouts de conexão/consulta e são encerradas. HTTP usa timeout de 1,8 segundo, SMTP usa timeouts de 700 ms e Redis usa PING com prazo de 1,5 segundo. As respostas mostram somente nomes de dependências e `ok`/`indisponivel`, sem hosts, credenciais ou mensagens internas.
+
+| Serviço | Dependências verificadas por `/health` |
+|---|---|
+| Catálogo | MariaDB (`SELECT 1`), `/health` do auth-service, readiness do MinIO e consulta GET autenticada da configuração TMDB |
+| Auth-service | MariaDB (`SELECT 1`) e conexão/autenticação SMTP (`verify`, sem enviar e-mail) |
+| Log-service | Redis conectado com `PING`/`PONG` e readiness do auth-service, necessário à consulta protegida dos eventos |
+
+A gravação da auditoria continua de melhor esforço: catálogo e auth-service não dependem de `/health` do log-service, evitando um ciclo e preservando login, favoritos e comentários quando a auditoria falha. Não há escrita de dados ou envio de e-mail pelos probes. Readiness detecta disponibilidade das dependências; não substitui testes de migrações ou de todas as funcionalidades.
+
+Os Dockerfiles e os três Compose existentes usam `/health`, com intervalo de cinco segundos, três falhas consecutivas e período inicial de 20 segundos. A falha altera o estado para `unhealthy`; o healthcheck não reinicia automaticamente o processo. O cliente Redis existente reconecta, permitindo recuperar `healthy` após a volta do Redis. Portas, redes, volumes, variáveis e seleção das imagens por `IMAGE_TAG` foram preservados. O workflow mantém publicação exclusivamente em push para `atividade-extra-cicd`; a branch de observabilidade executa verificações, sem publicar ou atualizar a produção.
+
+### Métricas do catálogo
+
+`GET /metrics` expõe o formato Prometheus usando `prom-client` 15. `http_requisicoes_total` conta requisições e `http_requisicao_duracao_segundos` registra latência em histograma, ambos por `metodo`, `rota` e `status`. Rotas usam templates, por exemplo `/api/perfil/:id`, sem IDs ou query strings. Rotas não mapeadas usam `/nao-mapeada`; erros de parsing e respostas 4xx/5xx também são contados. Conexões interrompidas usam 499. A própria consulta `/metrics` aparece na coleta seguinte. Não são registrados usuário, IP, cookie, token ou corpo. A biblioteca solicitada foi mantida na versão 15; o npm informa que versões futuras usam o nome `@prometheus-io/client`.
+
+Swagger e exportações JSON incluem `/health`, `/live` e `/metrics` do catálogo e `/health` e `/live` internos do auth-service. Não foram publicados proxies novos para os serviços internos.
+
+### Executar e validar sem tocar na produção
+
+Na raiz, execute `npm ci`, `npm ci --prefix auth-service`, `npm ci --prefix log-service`, `npm test` e `npm run docs:validate`. O laboratório usa uma stack separada, sem portas públicas, com MariaDB, SMTP de teste, Redis e MinIO próprios. O preparador gera credenciais descartáveis em `tmp/observabilidade/.env` e utiliza somente o token TMDB já configurado em `.env` para uma consulta GET de leitura. Esse arquivo é excluído do build e deve permanecer fora do Git. Não imprima seu conteúdo.
+
+```powershell
+node scripts/preparar-observabilidade-test.js
+docker compose --env-file tmp/observabilidade/.env -p observabilidade-qa -f docker-compose.observabilidade-test.yml up -d --build
+node scripts/validar-observabilidade-docker.js
+```
+
+Não execute novamente o preparador com os volumes do laboratório já inicializados: ele gera outra senha. Para reutilizar a stack, mantenha o arquivo de ambiente original. O script aguarda todos os estados healthy, consulta `/health` e `/live`, para **somente o Redis do laboratório**, confirma `unhealthy` e HTTP 503, restaura o Redis e confirma recuperação sem reiniciar o log-service. Também consulta erros reais e verifica as métricas por template. O SMTP é real no laboratório, mas é Mailpit; não é uma validação do Mailtrap de produção.
+
+### Capturar as evidências pendentes
+
+Use somente o projeto `observabilidade-qa`. Em PowerShell, defina:
+
+```powershell
+$qaCompose = @('--env-file', 'tmp/observabilidade/.env', '-p', 'observabilidade-qa', '-f', 'docker-compose.observabilidade-test.yml')
+docker compose @qaCompose ps
+```
+
+1. Aguarde os serviços da aplicação, Redis, MinIO e MariaDB `healthy`. Capture a listagem sem abrir variáveis de ambiente: `docs/evidencias/observabilidade-healthy.png`.
+2. Execute os comandos abaixo, aguarde aproximadamente 20 segundos e confirme `unhealthy` no log-service. Capture a listagem e HTTP 503 como `docs/evidencias/observabilidade-redis-unhealthy.png`:
+
+```powershell
+docker compose @qaCompose stop -t 3 redis
+docker compose @qaCompose ps
+docker compose @qaCompose exec -T log-service node -e "fetch('http://127.0.0.1:3002/health').then(async r => console.log(r.status, await r.json()))"
+docker compose @qaCompose exec -T log-service node -e "fetch('http://127.0.0.1:3002/live').then(async r => console.log(r.status, await r.json()))"
+docker compose @qaCompose start redis
+```
+
+3. Aguarde a recuperação automática para `healthy` e execute os comandos abaixo. Capture contador e histograma como `docs/evidencias/observabilidade-metrics.png`:
+
+```powershell
+docker compose @qaCompose exec -T catalogo node -e "Promise.all(['/api/perfil/123','/api/perfil/456','/rota-inexistente'].map(p => fetch('http://127.0.0.1:3000'+p))).then(() => console.log('Requisições de teste concluídas'))"
+docker compose @qaCompose exec -T catalogo node -e "fetch('http://127.0.0.1:3000/metrics').then(async r => console.log(r.status, await r.text()))"
+```
+
+Para encerrar somente o laboratório, execute `docker compose @qaCompose down` (sem `-v`, preservando seus dados). Os três prints permanecem **pendentes** e só serão inseridos no README quando os arquivos existirem. Prometheus/Grafana e implantação em produção não foram realizados.
+
+Validação concluída no laboratório: **56 testes automatizados aprovados, zero falhas**, duas especificações OpenAPI válidas e quatro imagens construídas. Catálogo, auth-service, log-service, MariaDB, Redis e MinIO ficaram healthy. Ao parar somente o Redis, o log-service passou a unhealthy, `/health` retornou 503 e `/live` retornou 200; o catálogo continuou pronto. Após restaurar o Redis, o log-service voltou a healthy sem reinício, confirmado pela data de início do mesmo container. As métricas reais registraram contador, histograma, respostas 401/404 e o template `/api/perfil/:id`, sem IDs nos labels. Os quatro testes novos também verificam 403, 500, JSON inválido, timeout e ausência de detalhes sensíveis. Os prints ainda não foram capturados.
 
 ## Tecnologias
 

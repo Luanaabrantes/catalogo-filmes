@@ -345,6 +345,35 @@
           "acao",
           "timestamp"
         ]
+      },
+      "Saude": {
+        "type": "object",
+        "required": [
+          "servico",
+          "status"
+        ],
+        "properties": {
+          "servico": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "indisponivel"
+            ]
+          },
+          "dependencias": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "indisponivel"
+              ]
+            }
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -357,6 +386,82 @@
     }
   },
   "paths": {
+    "/live": {
+      "get": {
+        "tags": [
+          "Observabilidade"
+        ],
+        "summary": "Liveness do processo",
+        "operationId": "get_live",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Saude"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observabilidade"
+        ],
+        "summary": "Readiness: MariaDB, autenticacao, MinIO e TMDB",
+        "operationId": "get_health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Saude"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependencia indisponivel ou timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Saude"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observabilidade"
+        ],
+        "summary": "Metricas HTTP Prometheus",
+        "operationId": "get_metrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/perfil/fotos/{usuarioId}/{arquivo}": {
       "get": {
         "tags": [
