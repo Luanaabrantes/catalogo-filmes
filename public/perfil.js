@@ -66,6 +66,7 @@ async function carregar() {
         el('formBio').hidden = true;
         mostrarFoto(perfil.foto_url);
         el('conteudoPerfil').hidden = false; el('statusPerfil').textContent = '';
+        await atualizarPremium();
         await favoritos();
     } catch (e) { el('statusPerfil').textContent = e.message; el('tentarNovamente').hidden = false; }
     finally { carregando = false; }
@@ -93,5 +94,28 @@ el('arquivoFoto').onchange = async () => {
         perfil.foto_url = dados.foto_url; mostrarFoto(dados.foto_url); feedback('Foto atualizada com sucesso.');
     } catch (e) { feedback(e.message, true); }
     finally { input.disabled = false; el('trocarFoto').disabled = false; input.value = ''; el('acoesPerfil').classList.remove('perfil-enviando'); }
+};
+async function atualizarPremium() {
+    el('seloPremium').hidden = true;
+    el('assinarPremium').hidden = true;
+    if (!perfil?.proprio) return;
+    try {
+        const estado = await api('/api/premium/status');
+        el('seloPremium').hidden = !estado.premium;
+        el('assinarPremium').hidden = estado.premium;
+        const retorno = new URLSearchParams(location.search).get('premium');
+        el('statusPremium').textContent = estado.premium ? 'Seu acesso Premium está confirmado.' :
+            retorno === 'sucesso' ? 'Confirmação pendente. Aguarde o webhook e atualize a confirmação.' :
+            retorno === 'cancelado' ? 'Checkout cancelado. Você pode tentar novamente.' : '';
+        el('atualizarPremium').hidden = estado.premium || retorno !== 'sucesso';
+    } catch (e) { el('statusPremium').textContent = e.message; el('assinarPremium').hidden = false; }
+}
+el('atualizarPremium').onclick = atualizarPremium;
+el('assinarPremium').onclick = async () => {
+    el('assinarPremium').disabled = true;
+    el('statusPremium').textContent = 'Abrindo checkout de teste...';
+    try { const { url } = await api('/api/premium/checkout', { method: 'POST' }); window.location.assign(url); }
+    catch (e) { el('statusPremium').textContent = e.message; }
+    finally { el('assinarPremium').disabled = false; }
 };
 carregar();

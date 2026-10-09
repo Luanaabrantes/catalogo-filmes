@@ -11,7 +11,7 @@ const rotas = {
         'src/server.js': '',
         'src/auth.js': '/api/auth', 'src/filmes.js': '/api/filmes',
         'src/favoritos.js': '/api/favoritos', 'src/comentarios.js': '/api/comentarios',
-        'src/logs.js': '/api/logs', 'src/admin.js': '/api/admin', 'src/perfil.js': '/api/perfil',
+        'src/logs.js': '/api/logs', 'src/admin.js': '/api/admin', 'src/perfil.js': '/api/perfil', 'src/premium.js': '/api/premium',
     },
     auth: {
         'auth-service/src/auth.js': '/auth', 'auth-service/src/admin.js': '/auth/admin',

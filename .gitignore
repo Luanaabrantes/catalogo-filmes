@@ -2,3 +2,6 @@ node_modules/
 .env
 npm-debug.log
 .DS_Store
+
+# Backups locais podem conter dados privados; nunca versionar.
+/tmp/premium-backups/

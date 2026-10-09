@@ -462,6 +462,159 @@
         }
       }
     },
+    "/api/premium/status": {
+      "get": {
+        "tags": [
+          "Premium"
+        ],
+        "summary": "Consultar benefício Premium confirmado pelo backend",
+        "operationId": "get_api_premium_status",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado persistido; nunca inferido do redirecionamento",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "premium",
+                    "status"
+                  ],
+                  "properties": {
+                    "premium": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida"
+          },
+          "503": {
+            "description": "Banco, migração ou autenticação indisponível"
+          }
+        }
+      }
+    },
+    "/api/premium/checkout": {
+      "post": {
+        "tags": [
+          "Premium"
+        ],
+        "summary": "Abrir assinatura Stripe exclusivamente de teste por R$ 9,90/mês",
+        "operationId": "post_api_premium_checkout",
+        "description": "Usuário, cliente, preço e URLs definidos no backend. Reutiliza checkout aberto; impede outra assinatura ativa ou pendente. Não recebe identificadores do navegador.",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "URL do Checkout de teste",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "url"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Objeto Stripe fora do modo de teste"
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida"
+          },
+          "409": {
+            "description": "Assinatura existente ou checkout aguardando confirmação"
+          },
+          "503": {
+            "description": "Stripe não configurado, configuração de produção rejeitada ou dependência indisponível"
+          }
+        }
+      }
+    },
+    "/api/stripe/webhook": {
+      "post": {
+        "tags": [
+          "Premium"
+        ],
+        "summary": "Receber webhook Stripe assinado de teste",
+        "operationId": "post_api_stripe_webhook",
+        "security": [],
+        "description": "Corpo bruto validado pelo SDK. invoice.paid confirma pagamento e vínculos; eventos da assinatura sincronizam status atual. Registro persistente transacional e idempotente, sem payload. Falha 503 permite reenvio.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Stripe-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Evento snapshot Stripe; assinado sobre os bytes originais"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Evento processado, repetido ou sem relação com esta integração",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recebido": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Assinatura ausente ou inválida, corpo não bruto ou livemode true"
+          },
+          "413": {
+            "description": "Corpo acima de 1 MiB"
+          },
+          "415": {
+            "description": "Codificação ou charset não suportado"
+          },
+          "503": {
+            "description": "Webhook não configurado ou processamento não concluído; reenviar"
+          }
+        }
+      }
+    },
     "/api/perfil/fotos/{usuarioId}/{arquivo}": {
       "get": {
         "tags": [

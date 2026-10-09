@@ -663,6 +663,120 @@ Recuperação do log-service para healthy após restaurar o Redis, sem reiniciar
 
 Endpoint /metrics com HTTP 200, contador de requisições e histograma de latência por método, rota e status.
 
+## Atividade 7 — Plano Premium: cobrança com Stripe
+
+Atividade ISW055, professor [@siriani](https://github.com/siriani). SDK oficial `stripe` 23, API `2026-09-30.endive`, exclusivamente em ambiente de testes. O preço configurado deve ser ativo, em BRL, de R$ 9,90 por mês. O produto de teste é `prod_VPF449RTyeo8rr` e o preço já criado é `price_1UOQaV6maMe1gZ6DZBOAsuwh`; identificadores públicos, não credenciais. Nenhum dado de cartão, CVV ou validade é armazenado pela aplicação.
+
+`POST /api/premium/checkout` exige a sessão existente, usa a identidade do backend e cria Checkout em `mode=subscription`. Cliente e tentativa usam chaves de idempotência; o cliente é persistido antes do checkout. Bloqueios por usuário serializam tentativas concorrentes, checkout aberto é reutilizado e assinaturas ativas ou pendentes impedem outra assinatura. Preço e URLs nunca vêm do navegador. `GET /api/premium/status` retorna somente o benefício e o status persistidos do usuário autenticado, sem cache.
+
+`POST /api/stripe/webhook` é registrado antes de `express.json`, recebe corpo bruto e valida `Stripe-Signature` com o SDK. Chaves diferentes de `sk_test_` e objetos/eventos `livemode=true` são rejeitados. `invoice.paid` só libera Premium após conferir pagamento da fatura atual, moeda/valor, preço, cliente, assinatura, usuário e Checkout criado pelo backend. Atualizações da assinatura consultam o estado atual no Stripe para tolerar eventos fora de ordem; não liberam acesso sem fatura previamente confirmada. Status diferente de `active` ou preço divergente retira o benefício. Cancelamento ao fim do período mantém acesso enquanto a assinatura permanece ativa e paga. Cancelamento imediato retira acesso. Falha de pagamento com `past_due` retira acesso; a recuperação exige confirmação da nova fatura.
+
+Cada evento é registrado por ID único em `stripe_eventos`, na mesma transação da atualização de `premium_assinaturas`. Repetições não reaplicam alterações; falhas fazem rollback e retornam 503 para permitir reenvio. Eventos sem relação com esta integração são reconhecidos sem conceder acesso. Payloads e mensagens internas do Stripe não são registrados. O perfil mantém foto, bio e favoritos, oferece **Assinar Premium — R$ 9,90/mês**, mostra o selo apenas após consulta ao backend e oferece **Atualizar confirmação** se o webhook ainda estiver pendente. O parâmetro de sucesso na URL nunca concede Premium.
+
+### Variáveis e migração segura
+
+Preencha somente no `.env` local (ignorado pelo Git) ou nas variáveis privadas da stack Portainer:
+
+| Variável | Configuração |
+|---|---|
+| `STRIPE_SECRET_KEY` | Chave secreta do ambiente de testes, começando com `sk_test_` |
+| `STRIPE_PRICE_ID` | Identificador do preço mensal de teste já criado |
+| `STRIPE_WEBHOOK_SECRET` | Segredo de assinatura do listener CLI local ou do endpoint do Dashboard, conforme ambiente |
+| `APP_BASE_URL` | Origem pública do catálogo; localmente `http://localhost:3000`, sem caminho, query ou credenciais |
+
+Os Compose local, Portainer e referência CI/CD passam essas variáveis somente ao catálogo, sem modificar portas, redes ou volumes. `NODE_ENV=production` no contêiner não autoriza Stripe live: a integração continua exclusivamente de teste. Sem Stripe configurado, as funcionalidades anteriores continuam disponíveis e o checkout retorna 503 com orientação de configuração. Sem `STRIPE_WEBHOOK_SECRET`, o webhook retorna 503 e o fluxo integrado não confirma Premium.
+
+1. Faça e confira um backup do banco existente com sua ferramenta habitual. Confirme que o banco selecionado é o ambiente pretendido e que as migrações anteriores já estão aplicadas. Para a aplicação publicada, confirme `DB_HOST`, `DB_PORT` e `DB_NAME` diretamente no contêiner do Portainer; o `.env` local não comprova o destino publicado. Aplique a migração somente após essa confirmação e autorização para o ambiente correspondente.
+2. Aplique [database/migracao-atividade7.sql](database/migracao-atividade7.sql), que cria duas tabelas InnoDB com `IF NOT EXISTS`; não altera nem apaga tabelas anteriores. `premium` tem padrão `FALSE`, e usuários sem registro também recebem `false` na API. A FK usa o mesmo `INT` de `usuarios.id` das migrações anteriores.
+3. DDL do MariaDB faz commit implícito: o arquivo não promete rollback completo. Em falha parcial, confira a estrutura e reexecute; `IF NOT EXISTS` não corrige uma tabela previamente criada com estrutura divergente. Não use `down -v` ou recrie volumes.
+4. O script abaixo executa a migração somente com `--aplicar`; a aplicação não migra o banco automaticamente. Para rollback de código, preserve as duas tabelas e os dados; não exclua registros de cobrança.
+
+### Iniciar localmente (PowerShell)
+
+O Compose existente depende do MariaDB configurado no ambiente e do `auth-service/.env` já usado nas atividades anteriores. Preserve as configurações de banco, JWT, SMTP, TMDB e MinIO. Configure `APP_BASE_URL=http://localhost:3000` no `.env`. Após o backup e a conferência do banco:
+
+```powershell
+Set-Location C:\Users\luana\catalogo-filmes
+docker compose build
+docker compose run --rm --no-deps catalogo node scripts/migrar-premium.js --aplicar
+docker compose up -d
+docker compose ps
+```
+
+Abra `http://localhost:3000` e entre com uma conta existente. Para rodar os serviços Node fora do Docker, instale dependências com `npm ci`, `npm ci --prefix auth-service` e `npm ci --prefix log-service`; mantenha MariaDB, Redis e MinIO acessíveis e ajuste os hosts de cada ambiente. Com o banco acessível pelo host, a migração também pode ser executada por `node scripts/migrar-premium.js --aplicar`, e o catálogo inicia com `npm start`.
+
+### Stripe CLI no Windows e checkout integrado
+
+Instale o CLI oficial conforme [a documentação Stripe](https://docs.stripe.com/cli/install). Em PowerShell com Node/npm instalado:
+
+```powershell
+npm install -g @stripe/cli
+stripe --version
+stripe login
+stripe listen --events invoice.paid,invoice.payment_failed,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted --forward-to http://localhost:3000/api/stripe/webhook
+```
+
+Autorize a conta de testes no navegador e mantenha esse terminal aberto. Use snapshot events (padrão desse comando), sem `--live`. O listener exibirá um segredo `whsec_...`: copie-o diretamente para `STRIPE_WEBHOOK_SECRET` no `.env` local. Não envie o segredo no chat, não faça captura dele e não o coloque no Git. O segredo do CLI é diferente do segredo de um endpoint registrado no Dashboard. Após salvar, em outro terminal:
+
+```powershell
+Set-Location C:\Users\luana\catalogo-filmes
+docker compose up -d --no-deps --force-recreate catalogo
+```
+
+1. Faça login, abra **Meu perfil** e clique em **Assinar Premium — R$ 9,90/mês**. Confira que o Checkout está em modo de teste e oferece o plano mensal correto.
+2. Use o cartão de teste `4242 4242 4242 4242`, uma validade futura e um CVC de teste de três dígitos; preencha os demais campos solicitados. Consulte [os cartões oficiais de teste](https://docs.stripe.com/testing). Não utilize cartão real.
+3. Ao retornar, o perfil consulta o backend. Se mostrar confirmação pendente, aguarde o listener receber `invoice.paid` com resposta 200 e clique em **Atualizar confirmação**. Não altere `premium` manualmente para produzir evidência.
+4. Na ferramenta SQL conectada ao mesmo banco, substitua o ID abaixo pelo usuário autenticado e confira benefício e vínculos:
+
+```sql
+SELECT usuario_id, premium, status, stripe_customer_id,
+       stripe_subscription_id, stripe_paid_invoice_id
+FROM premium_assinaturas WHERE usuario_id = 1;
+SELECT id, tipo, processado_em FROM stripe_eventos ORDER BY processado_em DESC LIMIT 10;
+```
+
+5. Confirme `premium=1`, status `active`, vínculos preenchidos e selo **Premium** no perfil. Reenvie o mesmo evento pelo Dashboard e confira que há somente um registro desse ID. Cancele a assinatura imediatamente no Dashboard de testes e confirme `premium=0` após o webhook; recarregue o perfil para conferir a retirada do selo.
+
+`stripe trigger invoice.paid` gera fixtures que não pertencem necessariamente ao usuário/cliente/preço deste sistema; não substitui o checkout acima e não deve conceder Premium a uma conta arbitrária.
+
+### Atualizar a aplicação publicada no Portainer
+
+A atualização da stack é manual. O Compose Portainer versionado usa imagens GHCR, não build de código no servidor. Para esta atividade, o workflow também publica as quatro imagens após verificações em push para `atividade-7-stripe-premium`, com tag `sha-<hash completo do commit>`, sem alterar `latest`. A regra da atividade CI/CD anterior permanece válida para sua branch. Não use uma tag SHA antes de confirmar o job `publicar` aprovado e as imagens disponíveis.
+
+1. Confirme no Portainer o banco real do contêiner catálogo, sem imprimir senha ou todas as variáveis:
+
+```sh
+node -e "console.log(JSON.stringify({host:process.env.DB_HOST,porta:process.env.DB_PORT,banco:process.env.DB_NAME}))"
+```
+
+2. Confirme o backup restaurável desse destino antes de aplicar `database/migracao-atividade7.sql`. O backup fica fora do Git. A migração é aditiva; preserve as tabelas anteriores e os volumes.
+3. Na **mesma stack existente**, mantenha nome, portas `8216:3000`, rede `catalogo-network` com subnet `10.88.0.0/24` e volumes `minio-data` e `audit-redis-data`. Preserve todas as variáveis anteriores. Se a stack usa Git, use o repositório `https://github.com/Luanaabrantes/catalogo-filmes`, referência `refs/heads/atividade-7-stripe-premium` e caminho `docker-compose.portainer.yml`. Se usa Web editor, atualize o Compose com o conteúdo desse arquivo, sem trocar de modalidade ou criar outra stack. Confirme a modalidade efetiva na configuração da stack antes de atualizar.
+4. Configure `IMAGE_TAG=sha-<hash completo do commit publicado>` e as quatro variáveis Stripe somente no catálogo. Para esta aplicação, `APP_BASE_URL=https://luana-abrantes-isw055.lapps.studio`. A chave deve continuar `sk_test_`; não configure chaves live.
+5. No Stripe Dashboard **em modo de testes**, Workbench → Webhooks, crie um endpoint **snapshot**, com versão da API `2026-09-30.endive`, apontando para `https://luana-abrantes-isw055.lapps.studio/api/stripe/webhook`. Habilite `invoice.paid`, `invoice.payment_failed`, `customer.subscription.created`, `customer.subscription.updated` e `customer.subscription.deleted`.
+6. Clique em atualizar a stack, pedindo novo pull das imagens com a tag SHA. Não remova a stack, redes ou volumes. Aguarde os serviços saudáveis e confirme `/live`, `/health`, login, perfil, foto e favoritos antes do checkout.
+7. Faça checkout na aplicação publicada usando somente cartão de teste. Confira `invoice.paid` com resposta 200 no Dashboard, Premium no banco e selo no perfil. O código publicado e o backup não comprovam pagamento. O fluxo integrado permanece pendente até esses passos serem executados.
+
+Copie o segredo desse endpoint diretamente para `STRIPE_WEBHOOK_SECRET` nas variáveis privadas do Portainer, sem publicá-lo, e recrie o serviço catálogo na atualização autorizada. Não use o segredo do CLI no endpoint publicado. A migração precisa ser aplicada ao banco correto antes de usar a funcionalidade; não exponha a porta do banco para isso. Consulte [a documentação de webhooks](https://docs.stripe.com/webhooks).
+
+### Verificações e evidências
+
+```powershell
+npm test
+npm run docs:generate
+npm run docs:validate
+node scripts/validar-premium-mariadb.js
+```
+
+Os testes HTTP Premium usam chamadas externas Stripe e banco simulados, com geração e validação criptográfica reais de assinaturas pelo SDK. Cobrem sessão ausente, configuração ausente/live, Checkout, vínculo backend, assinatura inválida, pagamento, duplicação, rollback/reenvio, divergências, recuperação de vínculo, renovação e cancelamento. O script MariaDB usa contêiner descartável `mariadb:11.4`, sem portas publicadas, sem acesso ao `.env` e sem volumes da aplicação; valida migração reexecutável, padrão `false`, FK, unicidade e transações reais. Esses resultados não comprovam um pagamento no Stripe.
+
+Verificações desta implementação: **75 testes aprovados, zero falhas**, duas especificações OpenAPI válidas e os três Compose validados em modo silencioso (Portainer/CI emitem avisos de SMTP ausente no ambiente local; suas variáveis existentes devem ser mantidas na stack). O laboratório MariaDB 11.4 passou. Uma consulta real de leitura ao Stripe confirmou o preço informado, produto esperado, modo de teste, estado ativo, BRL e 990 centavos por mês; não criou sessão nem pagamento.
+
+**Checkout integrado com Stripe: pendente.** Será validado após configurar `APP_BASE_URL`, o segredo do webhook e executar o fluxo manual. Nenhuma evidência foi inventada. Capture somente após o teste, sem segredos, dados de cartão ou dados pessoais desnecessários:
+
+- `docs/evidencias/atividade-7-stripe-checkout.png`: resumo do plano no Checkout de teste, antes de preencher cartão.
+- `docs/evidencias/atividade-7-premium-banco.png`: consulta do usuário com `premium=1`, status e vínculos após o webhook.
+- `docs/evidencias/atividade-7-premium-perfil.png`: perfil com selo Premium confirmado pelo backend.
+
 ## Tecnologias
 
 Node.js, Express, JavaScript, HTML, CSS, MariaDB, MySQL2, `bcryptjs`, `jsonwebtoken`, Nodemailer, API TMDB, Redis, Redis Streams, MinIO, Multer, Sharp, Docker e Docker Compose.
