@@ -476,14 +476,22 @@
         ],
         "responses": {
           "200": {
-            "description": "Estado persistido; nunca inferido do redirecionamento",
+            "description": "Estado calculado no backend por período pago válido, vínculos e preço; sem consulta Stripe por requisição. Sempre usuário da sessão; ignora IDs enviados pelo navegador.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
                     "premium",
-                    "status"
+                    "status",
+                    "plano",
+                    "valor_centavos",
+                    "situacao",
+                    "pagamento_pendente",
+                    "cancelamento_programado",
+                    "renovacao_em",
+                    "termina_em",
+                    "pode_assinar"
                   ],
                   "properties": {
                     "premium": {
@@ -491,6 +499,42 @@
                     },
                     "status": {
                       "type": "string"
+                    },
+                    "plano": {
+                      "type": "string",
+                      "enum": [
+                        "Gratuito",
+                        "Premium"
+                      ]
+                    },
+                    "valor_centavos": {
+                      "type": "integer",
+                      "enum": [
+                        0,
+                        990
+                      ]
+                    },
+                    "situacao": {
+                      "type": "string"
+                    },
+                    "pagamento_pendente": {
+                      "type": "boolean"
+                    },
+                    "cancelamento_programado": {
+                      "type": "boolean"
+                    },
+                    "renovacao_em": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "termina_em": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "pode_assinar": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -562,7 +606,7 @@
         "summary": "Receber webhook Stripe assinado de teste",
         "operationId": "post_api_stripe_webhook",
         "security": [],
-        "description": "Corpo bruto validado pelo SDK. invoice.paid confirma pagamento e vínculos; eventos da assinatura sincronizam status atual. Registro persistente transacional e idempotente, sem payload. Falha 503 permite reenvio.",
+        "description": "Corpo bruto validado pelo SDK. invoice.paid confirma pagamento, vínculos e período da linha da fatura; eventos da assinatura atualizam situação sem comprovar pagamento. Acesso expira por data mesmo sem webhook; período pago é monotônico e status tem marca temporal. Registro persistente transacional e idempotente, sem payload. Falha 503 permite reenvio.",
         "parameters": [
           {
             "in": "header",

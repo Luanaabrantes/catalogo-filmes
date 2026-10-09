@@ -95,20 +95,38 @@ el('arquivoFoto').onchange = async () => {
     } catch (e) { feedback(e.message, true); }
     finally { input.disabled = false; el('trocarFoto').disabled = false; input.value = ''; el('acoesPerfil').classList.remove('perfil-enviando'); }
 };
+
 async function atualizarPremium() {
     el('seloPremium').hidden = true;
     el('assinarPremium').hidden = true;
+    el('planosPremium').hidden = !perfil?.proprio;
     if (!perfil?.proprio) return;
     try {
         const estado = await api('/api/premium/status');
         el('seloPremium').hidden = !estado.premium;
-        el('assinarPremium').hidden = estado.premium;
+        el('assinarPremium').hidden = !estado.pode_assinar;
+        el('planoAtual').textContent = estado.premium ? 'Premium' : 'Gratuito';
+        el('planoGratuitoAtual').textContent = estado.premium ? 'Incluído no Premium' : 'Seu plano';
+        el('cartaoGratuito').classList.toggle('perfil-plano-atual', !estado.premium);
+        el('cartaoPremium').classList.toggle('perfil-plano-atual', estado.premium);
+        el('resumoAssinatura').textContent = estado.plano + ' · ' +
+            (estado.valor_centavos ? 'R$ 9,90/mês' : 'Grátis');
+        el('situacaoAssinatura').textContent = estado.situacao;
+        const linha = window.premiumApresentacao.linhaData(estado);
+        el('dataAssinatura').hidden = !linha;
+        el('dataAssinatura').textContent = linha;
         const retorno = new URLSearchParams(location.search).get('premium');
-        el('statusPremium').textContent = estado.premium ? 'Seu acesso Premium está confirmado.' :
+        el('statusPremium').textContent = estado.pagamento_pendente ?
+            'Regularize o pagamento da sua assinatura no Stripe de testes. Um novo período só será liberado após confirmação do pagamento.' :
+            estado.premium ? 'Seu acesso Premium está confirmado para o período pago.' :
             retorno === 'sucesso' ? 'Confirmação pendente. Aguarde o webhook e atualize a confirmação.' :
             retorno === 'cancelado' ? 'Checkout cancelado. Você pode tentar novamente.' : '';
-        el('atualizarPremium').hidden = estado.premium || retorno !== 'sucesso';
-    } catch (e) { el('statusPremium').textContent = e.message; el('assinarPremium').hidden = false; }
+        el('atualizarPremium').hidden = false;
+    } catch (e) {
+        el('statusPremium').textContent = e.message;
+        el('dataAssinatura').hidden = true;
+        el('atualizarPremium').hidden = false;
+    }
 }
 el('atualizarPremium').onclick = atualizarPremium;
 el('assinarPremium').onclick = async () => {

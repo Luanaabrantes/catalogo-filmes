@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Perfil | Catálogo de Filmes</title>
     <link rel="stylesheet" href="style.css">
+    <script src="premiumApresentacao.js" defer></script>
     <script src="perfil.js" defer></script>
 </head>
 <body class="catalogo-page perfil-page">
@@ -32,12 +33,33 @@
                         <small id="ajudaFoto">JPG, PNG ou WebP · até 5 MB</small>
                     </div>
                 </div>
-                <div class="perfil-editor">
-                    <strong id="seloPremium" hidden>★ Premium</strong>
-                    <button id="assinarPremium" class="admin-action-button admin-primary-button" hidden>Assinar Premium — R$ 9,90/mês</button>
-                    <p id="statusPremium" role="status" aria-live="polite"></p>
-                    <button id="atualizarPremium" class="admin-action-button" hidden>Atualizar confirmação</button>
-                </div>
+                <section id="planosPremium" class="perfil-planos" aria-labelledby="tituloPlanos" hidden>
+                    <h3 id="tituloPlanos">Escolha seu plano</h3>
+                    <p>Seu plano atual: <strong id="planoAtual">Gratuito</strong></p>
+                    <div class="perfil-planos-grade">
+                        <article class="perfil-plano" id="cartaoGratuito">
+                            <span class="perfil-eyebrow">PARA TODAS AS HISTÓRIAS</span>
+                            <h4>Gratuito</h4><p class="perfil-plano-preco">Grátis</p>
+                            <ul><li>Explorar o catálogo e os filmes</li><li>Favoritar e comentar</li><li>Perfil com foto e bio</li></ul>
+                            <p id="planoGratuitoAtual">Seu plano</p>
+                        </article>
+                        <article class="perfil-plano perfil-plano-premium" id="cartaoPremium">
+                            <span class="perfil-eyebrow">DESTAQUE NO SEU PERFIL</span>
+                            <h4>Premium</h4><p class="perfil-plano-preco">R$ 9,90<span>/mês</span></p>
+                            <ul><li>Tudo do plano Gratuito</li><li>Selo Premium no perfil durante o período pago</li></ul>
+                            <strong id="seloPremium" class="perfil-selo-premium" hidden>★ Premium</strong>
+                            <button id="assinarPremium" class="admin-action-button admin-primary-button" hidden>Assinar Premium — R$ 9,90/mês</button>
+                        </article>
+                    </div>
+                    <div class="perfil-assinatura" aria-live="polite">
+                        <p id="resumoAssinatura"></p>
+                        <p id="situacaoAssinatura"></p>
+                        <p id="dataAssinatura" hidden></p>
+                        <p id="statusPremium" role="status"></p>
+                        <button id="atualizarPremium" class="admin-action-button" hidden>Atualizar confirmação</button>
+                    </div>
+                    <small>Checkout seguro no Stripe. Ambiente de testes.</small>
+                </section>
                 <form id="formBio" class="perfil-editor" hidden>
                     <label for="bio">Um pouco sobre você</label>
                     <textarea id="bio" maxlength="300" rows="3" placeholder="Que histórias fazem parte da sua vida?"></textarea>

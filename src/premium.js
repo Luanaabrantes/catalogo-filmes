@@ -10,17 +10,39 @@ const express = require('express');
  *       - sessao: []
  *     responses:
  *       '200':
- *         description: Estado persistido; nunca inferido do redirecionamento
+ *         description: Estado calculado no backend por período pago válido, vínculos e preço; sem consulta Stripe por requisição. Sempre usuário da sessão; ignora IDs enviados pelo navegador.
  *         content:
  *           application/json:
  *             schema:
  *               type: object
- *               required: [premium, status]
+ *               required: [premium, status, plano, valor_centavos, situacao, pagamento_pendente, cancelamento_programado, renovacao_em, termina_em, pode_assinar]
  *               properties:
  *                 premium:
  *                   type: boolean
  *                 status:
  *                   type: string
+ *                 plano:
+ *                   type: string
+ *                   enum: [Gratuito, Premium]
+ *                 valor_centavos:
+ *                   type: integer
+ *                   enum: [0, 990]
+ *                 situacao:
+ *                   type: string
+ *                 pagamento_pendente:
+ *                   type: boolean
+ *                 cancelamento_programado:
+ *                   type: boolean
+ *                 renovacao_em:
+ *                   type: string
+ *                   format: date-time
+ *                   nullable: true
+ *                 termina_em:
+ *                   type: string
+ *                   format: date-time
+ *                   nullable: true
+ *                 pode_assinar:
+ *                   type: boolean
  *       '401':
  *         description: Sessão ausente ou inválida
  *       '503':
@@ -59,7 +81,7 @@ const express = require('express');
  *     summary: Receber webhook Stripe assinado de teste
  *     operationId: post_api_stripe_webhook
  *     security: []
- *     description: Corpo bruto validado pelo SDK. invoice.paid confirma pagamento e vínculos; eventos da assinatura sincronizam status atual. Registro persistente transacional e idempotente, sem payload. Falha 503 permite reenvio.
+ *     description: Corpo bruto validado pelo SDK. invoice.paid confirma pagamento, vínculos e período da linha da fatura; eventos da assinatura atualizam situação sem comprovar pagamento. Acesso expira por data mesmo sem webhook; período pago é monotônico e status tem marca temporal. Registro persistente transacional e idempotente, sem payload. Falha 503 permite reenvio.
  *     parameters:
  *       - in: header
  *         name: Stripe-Signature
@@ -93,8 +115,7 @@ const express = require('express');
  *         description: Webhook não configurado ou processamento não concluído; reenviar
  */
 const Stripe = require('stripe');
-const id = value => typeof value === 'string' ? value : value?.id;
-const subscriptionId = invoice => id(invoice.parent?.subscription_details?.subscription || invoice.subscription);
+const { id, subscriptionId, epoch, periodoPago, acessoValido, estadoPublico } = require('./premiumPeriodo');
 const terminal = status => ['canceled', 'incomplete_expired'].includes(status);
 class ErroPremium extends Error {
     constructor(message, status = 503) { super(message); this.status = status; }
@@ -115,7 +136,7 @@ function teste(objeto) {
     if (!objeto || objeto.livemode !== false) throw new ErroPremium('Objeto Stripe fora do modo de teste.', 400);
     return objeto;
 }
-function criarPremium({ db = require('./database'), autenticar = require('./middlewareAuth'), config = () => configurar(), env = process.env } = {}) {
+function criarPremium({ db = require('./database'), autenticar = require('./middlewareAuth'), config = () => configurar(), env = process.env, now = () => Math.floor(Date.now() / 1000) } = {}) {
     async function transacao(fn) {
         const c = await db.getConnection();
         try { await c.beginTransaction(); const result = await fn(c); await c.commit(); return result; }
@@ -134,8 +155,8 @@ function criarPremium({ db = require('./database'), autenticar = require('./midd
     router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
     router.get('/status', async (req, res) => {
         try {
-            const [rows] = await db.execute('SELECT premium, status FROM premium_assinaturas WHERE usuario_id = ?', [req.usuario.id]);
-            res.json({ premium: Boolean(rows[0]?.premium), status: rows[0]?.status || 'nenhuma' });
+            const [rows] = await db.execute('SELECT * FROM premium_assinaturas WHERE usuario_id = ?', [req.usuario.id]);
+            res.json(estadoPublico(rows[0], env.STRIPE_PRICE_ID || process.env.STRIPE_PRICE_ID, now()));
         } catch { res.status(503).json({ mensagem: 'Não foi possível consultar Premium. Verifique a migração da atividade 7.' }); }
     });
     router.post('/checkout', async (req, res) => {
@@ -176,12 +197,75 @@ function criarPremium({ db = require('./database'), autenticar = require('./midd
                     line_items: [{ price, quantity: 1 }],
                     success_url: `${base}/perfil.html?premium=sucesso`, cancel_url: `${base}/perfil.html?premium=cancelado`
                 }, { idempotencyKey: `premium-checkout-${usuarioId}-${price}-${tentativa}` }));
-                await c.execute("UPDATE premium_assinaturas SET stripe_checkout_id = ?, stripe_subscription_id = NULL, stripe_paid_invoice_id = NULL, premium = FALSE, status = 'pendente' WHERE usuario_id = ?", [session.id, usuarioId]);
+                await c.execute("UPDATE premium_assinaturas SET stripe_checkout_id = ?, stripe_subscription_id = NULL, stripe_paid_invoice_id = NULL, paid_period_start = NULL, paid_period_end = NULL, stripe_price_id = NULL, cancel_at_period_end = FALSE, cancel_at = NULL, next_renewal_at = NULL, payment_problem = FALSE, state_event_created = 0, premium = FALSE, status = 'pendente' WHERE usuario_id = ?", [session.id, usuarioId]);
                 return session.url;
             });
             res.json({ url });
         } catch (e) { res.status(e instanceof ErroPremium ? e.status : 503).json({ mensagem: e instanceof ErroPremium ? e.message : 'Não foi possível iniciar o checkout de teste.' }); }
     });
+
+    async function atualizar(c, row, sub, price, invoice, created) {
+        const items = sub.items?.data || [];
+        const correto = items.length === 1 && !sub.items.has_more && id(items[0].price) === price && items[0].quantity === 1;
+        const paid = correto && invoice ? periodoPago(invoice, sub, price) : null;
+        if (paid && paid.end > Number(row.paid_period_end || 0)) {
+            const continuo = row.stripe_price_id === price && epoch(row.paid_period_start) && paid.start <= Number(row.paid_period_end);
+            row.paid_period_start = continuo ? Math.min(Number(row.paid_period_start), paid.start) : paid.start;
+            row.paid_period_end = paid.end;
+            row.stripe_paid_invoice_id = paid.invoiceId;
+        }
+        // Snapshot atual sob lock. Eventos antigos não sobrescrevem situações mais recentes.
+        if (created >= Number(row.state_event_created || 0)) {
+            row.status = correto ? sub.status : 'preco_invalido';
+            row.stripe_price_id = correto ? price : id(items[0]?.price) || null;
+            row.cancel_at_period_end = Boolean(sub.cancel_at_period_end);
+            row.cancel_at = epoch(sub.cancel_at);
+            row.next_renewal_at = sub.collection_method === 'charge_automatically' ? epoch(items[0]?.current_period_end) : null;
+            row.payment_problem = ['past_due', 'unpaid'].includes(sub.status) || Boolean(sub.latest_invoice?.attempted && sub.latest_invoice.status === 'open' && sub.latest_invoice.amount_remaining > 0);
+            row.state_event_created = created;
+        }
+        row.stripe_subscription_id = sub.id;
+        row.premium = acessoValido(row, price, now());
+        await c.execute('UPDATE premium_assinaturas SET stripe_subscription_id = ?, stripe_paid_invoice_id = ?, premium = ?, status = ?, stripe_price_id = ?, paid_period_start = ?, paid_period_end = ?, cancel_at_period_end = ?, cancel_at = ?, next_renewal_at = ?, payment_problem = ?, state_event_created = ? WHERE usuario_id = ?',
+            [sub.id, row.stripe_paid_invoice_id || null, row.premium, row.status, row.stripe_price_id || null, row.paid_period_start || null, row.paid_period_end || null,
+                row.cancel_at_period_end || false, row.cancel_at || null, row.next_renewal_at || null, row.payment_problem || false, row.state_event_created || 0, row.usuario_id]);
+    }
+    // CLI administrativa: não há rota que aceite identidade de terceiros.
+    async function sincronizar(usuarioId, aplicar = false) {
+        if (!/^[1-9]\d*$/.test(String(usuarioId))) throw new ErroPremium('Informe um ID de usuário válido.', 400);
+        const { stripe, price } = config();
+        return transacao(async c => {
+            const [rows] = await c.execute('SELECT * FROM premium_assinaturas WHERE usuario_id = ? FOR UPDATE', [usuarioId]);
+            const row = rows[0];
+            if (!row?.stripe_customer_id) throw new ErroPremium('Cliente não vinculado. Confira o Checkout do usuário; não ative Premium manualmente.', 409);
+            let subId = row.stripe_subscription_id;
+            if (!subId && row.stripe_checkout_id) subId = id(teste(await stripe.checkout.sessions.retrieve(row.stripe_checkout_id)).subscription);
+            if (!subId) {
+                const list = await stripe.subscriptions.list({ customer: row.stripe_customer_id, status: 'all', limit: 100 });
+                const candidates = list.data.filter(s => teste(s).metadata?.usuario_id === String(usuarioId) && !terminal(s.status));
+                if (list.has_more || candidates.length !== 1) throw new ErroPremium('Não foi possível identificar uma única assinatura vinculada.', 409);
+                subId = candidates[0].id;
+            }
+            const sub = teste(await stripe.subscriptions.retrieve(subId, { expand: ['latest_invoice'] }));
+            if (sub.metadata?.usuario_id !== String(usuarioId) || id(sub.customer) !== row.stripe_customer_id) throw new ErroPremium('Assinatura não pertence ao usuário.', 409);
+            let best = null;
+            for await (const invoice of stripe.invoices.list({ customer: row.stripe_customer_id, subscription: sub.id, status: 'paid', limit: 100 })) {
+                const current = teste(await stripe.invoices.retrieve(invoice.id));
+                const paid = periodoPago(current, sub, price);
+                if (paid && (!best || paid.end > best.period.end)) best = { invoice: current, period: paid };
+            }
+            const copy = { ...row };
+            await atualizar(aplicar ? c : { execute: async () => [] }, copy, sub, price, best?.invoice || null, now());
+            return { aplicado: aplicar, pagamento_confirmado: Boolean(best), estado: estadoPublico(copy, price, now()) };
+        });
+    }
+    async function exigirPremium(req, res, next) {
+        try {
+            const [rows] = await db.execute('SELECT * FROM premium_assinaturas WHERE usuario_id = ?', [req.usuario.id]);
+            if (!acessoValido(rows[0], env.STRIPE_PRICE_ID || process.env.STRIPE_PRICE_ID, now())) return res.status(403).json({ mensagem: 'Este benefício exige um período Premium pago e válido.' });
+            next();
+        } catch { res.status(503).json({ mensagem: 'Não foi possível verificar Premium.' }); }
+    }
     async function processar(event, stripe, price) {
         teste(event);
         const supported = ['invoice.paid', 'invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted', 'customer.subscription.created'];
@@ -214,18 +298,9 @@ function criarPremium({ db = require('./database'), autenticar = require('./midd
                 if (!row.stripe_checkout_id) await c.execute('UPDATE premium_assinaturas SET stripe_checkout_id = ? WHERE usuario_id = ?', [checkout.id, usuarioId]);
             }
             if (event.type.startsWith('invoice.') && (id(object.customer) !== row.stripe_customer_id || subscriptionId(object) !== sub.id)) return;
-            const items = sub.items?.data || [];
-            const correto = items.length === 1 && !sub.items.has_more && id(items[0].price) === price && items[0].quantity === 1;
-            let paidId = row.stripe_paid_invoice_id;
-            const invoice = sub.latest_invoice;
-            if (event.type === 'invoice.paid' && correto && object.status === 'paid' && object.id === id(invoice)) {
-                teste(invoice);
-                const lines = invoice.lines?.data || [];
-                const linePrice = line => id(line.pricing?.price_details?.price || line.price);
-                if (invoice.status === 'paid' && invoice.amount_paid >= 990 && invoice.currency === 'brl' && subscriptionId(invoice) === sub.id && id(invoice.customer) === row.stripe_customer_id && !invoice.lines?.has_more && lines.some(line => linePrice(line) === price)) paidId = invoice.id;
-            }
-            const premium = correto && sub.status === 'active' && Boolean(paidId) && paidId === id(invoice);
-            await c.execute('UPDATE premium_assinaturas SET stripe_subscription_id = ?, stripe_paid_invoice_id = ?, premium = ?, status = ? WHERE usuario_id = ?', [sub.id, paidId || null, premium, sub.status, usuarioId]);
+            const invoice = event.type === 'invoice.paid' ? teste(await stripe.invoices.retrieve(object.id)) : null;
+            await atualizar(c, row, sub, price, invoice, event.created || 0);
+
         });
     }
     async function webhook(req, res) {
@@ -242,6 +317,6 @@ function criarPremium({ db = require('./database'), autenticar = require('./midd
         try { await processar(event, cfg.stripe, cfg.price); res.json({ recebido: true }); }
         catch { res.status(503).json({ mensagem: 'Não foi possível processar o evento. Tente novamente.' }); }
     }
-    return { router, webhook, processar };
+    return { router, webhook, processar, sincronizar, exigirPremium };
 }
 module.exports = { criarPremium, configurar, ErroPremium };
