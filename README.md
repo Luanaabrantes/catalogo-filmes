@@ -1,8 +1,10 @@
 # Catálogo de Filmes — Tom Hanks
 
-Aplicação acadêmica desenvolvida para a disciplina **Introdução à Computação em Nuvem (ISW055)**, no semestre 2026.2, com catálogo de filmes, autenticação, controle de acesso por papel e auditoria centralizada.
+Aplicação acadêmica desenvolvida para a disciplina **Introdução à Computação em Nuvem (ISW055)**, no semestre 2026.2, com catálogo de filmes, autenticação, controle de acesso por papel, auditoria centralizada, perfil com foto e plano Premium integrado ao Stripe de teste.
 
 **Professor:** [@siriani](https://github.com/siriani)
+
+📘 **Documentação completa do sistema:** [DOCUMENTACAO.md](DOCUMENTACAO.md)
 
 📑 **Avaliação P1 (Relatório Bimestral de Atividades):** [P1_ISW055_Luana_Abrantes.pdf](https://github.com/Luanaabrantes/catalogo-filmes/blob/main/docs/P1_ISW055_Luana_Abrantes.pdf)
 
@@ -17,32 +19,34 @@ Aplicação acadêmica desenvolvida para a disciplina **Introdução à Computa�
 - Painel administrativo com Visão geral, Auditoria e Usuários.
 - Registro de eventos em um Redis Stream pelo serviço dedicado `log-service`.
 - Perfil com foto no MinIO, bio e favoritos, com edição exclusiva pelo proprietário.
+- Planos Gratuito e Premium de R$ 9,90/mês: favoritos e comentários continuam gratuitos; Premium acrescenta selo durante o período pago.
+- Checkout Stripe exclusivamente de teste, webhook assinado, verificação backend do período pago e sincronização administrativa da assinatura existente.
+- Documentação OpenAPI, health checks, métricas HTTP e CI/CD de imagens com atualização manual da stack.
 
 ## Arquitetura atual
 
-```text
-Navegador
-    │ HTTP/HTTPS
-    ▼
-Catálogo / Express :3000 ───────► auth-service :3001 ───────► MariaDB
-    │                                  │                         (externo ao Compose)
-    ├──► MinIO :9000 (fotos; volume minio-data)
-    │                                  └──── POST /eventos ──┐
-    └──────────────────── POST /eventos ────────────────────┤
-                                                            ▼
-                                                     log-service :3002
-                                                            │
-                                                            ▼
-                                                   Redis Stream :6379
-```
+~~~text
+Navegador -> Catalogo Express :3000 -> auth-service :3001 -> SMTP externo
+     |           |                          |
+     |           +-------- SQL -------------+------> MariaDB externo ao Compose
+     |           +--> MinIO :9000 (fotos; volume minio-data)
+     |           +--> API TMDB (pessoa/creditos)
+     |           +--> Stripe de teste (SDK)
+     +--> Stripe Checkout -- webhook assinado --> Catalogo
+     +--> CDN TMDB (posters)
 
-O navegador acessa somente o catálogo. `auth-service`, `log-service`, Redis e MinIO não publicam portas no host: a comunicação entre os microsserviços ocorre na rede Docker `catalogo-network`. O `log-service` é o único componente que acessa Redis; catálogo e `auth-service` enviam eventos para ele por HTTP.
+Catalogo e auth-service -- POST eventos --> log-service :3002
+Catalogo -- GET admin --> log-service -- validacao de sessao --> auth-service
+log-service -- XADD / XREVRANGE --> Redis :6379 (volume audit-redis-data)
+~~~
 
-O MariaDB continua fornecendo os dados de negócio e autenticação, mas é uma dependência externa: não há serviço MariaDB definido nos Compose deste projeto.
+As APIs da aplicação são acessadas pelo navegador por meio do catálogo. O navegador também carrega pôsteres do TMDB e navega para o Stripe Checkout. `auth-service`, `log-service`, Redis e MinIO não publicam portas no host: a comunicação entre os microsserviços ocorre na rede Docker `catalogo-network`. O `log-service` é o único componente que acessa Redis; catálogo e `auth-service` enviam eventos para ele por HTTP.
+
+O MariaDB continua fornecendo os dados de negócio e autenticação, acessado diretamente tanto pelo catálogo quanto pelo auth-service. É uma dependência externa: não há serviço MariaDB definido nos Compose deste projeto. O [diagrama Mermaid completo](DOCUMENTACAO.md#3-arquitetura-e-topologia) inclui infraestrutura, SMTP, TMDB, Stripe e webhooks.
 
 | Serviço | Responsabilidade | Acesso/porta |
 |---|---|---|
-| `catalogo` | Frontend, API pública, TMDB, favoritos, comentários, sessão e proxy administrativo | Único publicado: local `3000:3000`; Portainer `8216:3000` |
+| `catalogo` | Frontend/API pública, TMDB, favoritos, comentários, perfil, Premium/Stripe, sessão e proxies | Único publicado: local `3000:3000`; Portainer `8216:3000` |
 | `auth-service` | Cadastro, autenticação, validação da sessão, papel atual, recuperação de senha e gestão administrativa de usuários | Interno, `3001` |
 | `log-service` | Validação, gravação e consulta de eventos de auditoria | Interno, `3002` |
 | `redis` | Persistência do Stream `auditoria` | Interno, `6379` |
@@ -52,15 +56,20 @@ Não é necessário expor `3001`, `3002` ou `6379` ao host.
 
 ### Evolução das atividades
 
+As seções de atividades abaixo preservam relatos, evidências e verificações das versões de cada etapa, inclusive contagens de testes e condições de publicação da época. Para o estado atual, consulte [DOCUMENTACAO.md](DOCUMENTACAO.md). Hoje, o workflow verifica push/pull request em todas as branches, mas publica imagens apenas nos pushes de atividade-extra-cicd e atividade-7-stripe-premium; main e a branch documental não publicam imagens nem fazem deploy. Somente atividade-extra-cicd atualiza latest.
+
 - **Atividade 3:** autenticação desacoplada no `auth-service`, papéis e recuperação de senha. A descrição daquela etapa com catálogo e `auth-service` corresponde à arquitetura histórica, não à composição atual.
 - **Atividade 4:** autorização RBAC aplicada às operações protegidas e moderação de comentários.
 - **Atividade 5:** serviço de auditoria próprio, Redis Streams, consulta administrativa e painel de gestão.
+- **Atividade 6:** perfil, bio e avatar no MinIO, com escrita restrita ao proprietário.
+- **Atividade 7:** Premium separado de role, Stripe de teste, período efetivamente pago e evidências reais.
+- **Atividade final:** documentação reversa funcional, arquitetura, regras, dados e classificação SaaS/PaaS/IaaS em DOCUMENTACAO.md.
 
 ## Serviços e Docker Compose
 
 O Compose local é `docker-compose.yml`; para produção no Portainer, use `docker-compose.portainer.yml`. Ambos definem `catalogo`, `auth-service`, `log-service`, `redis` e `minio` na mesma rede `catalogo-network`.
 
-No ambiente local, apenas o catálogo publica `3000:3000`. No Compose do Portainer, ele publica `8216:3000`, usa `NODE_ENV=production` e recebe configuração por variáveis do ambiente do Portainer: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `TMDB_TOKEN`, `JWT_SECRET` e `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`. `CATALOGO_URL` aponta para a aplicação publicada. Esse arquivo também preserva a configuração DNS do `auth-service` e a rede IPAM existente (`10.88.0.0/24`). Valores secretos não são gravados no Compose nem devem ser colocados no Git.
+No ambiente local, apenas o catálogo publica `3000:3000`. No Compose do Portainer, ele publica `8216:3000`, usa `NODE_ENV=production` e recebe configuração por variáveis do ambiente do Portainer: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `TMDB_TOKEN`, `JWT_SECRET` e `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`. `CATALOGO_URL` aponta para a aplicação publicada. Esse arquivo também preserva a configuração DNS do `auth-service` e a rede IPAM existente (`10.88.0.0/24`). O catálogo também recebe as variáveis MinIO e STRIPE_SECRET_KEY, STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET e APP_BASE_URL; somente nomes/placeholders são documentados. Valores secretos não são gravados no Compose nem devem ser colocados no Git.
 
 Variáveis internas relevantes:
 
@@ -73,6 +82,28 @@ REDIS_URL=redis://redis:6379
 Redis usa a imagem `redis:7.4-alpine`, inicia com AOF (`--appendonly yes`) e persiste dados no volume `audit-redis-data`; o volume precisa ser preservado para manter os dados entre recriações do container. O healthcheck executa `redis-cli ping`; o `log-service` aguarda Redis saudável e também possui healthcheck em `/health`. No Compose do Portainer, os cinco serviços usam `restart: unless-stopped`.
 
 O Compose não define container para MariaDB: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME` devem apontar para a instância externa configurada no ambiente. Da mesma forma, TMDB, JWT e SMTP são configurados por variáveis de ambiente.
+
+## Classificação SaaS, PaaS e IaaS
+
+No recorte didático solicitado pelo professor [@siriani](https://github.com/siriani), a VM representa IaaS, a camada de execução Docker/Portainer representa PaaS e o catálogo consumido pelo usuário representa SaaS. Esta é uma leitura por responsabilidades do projeto, não a comprovação de contratação de um PaaS gerenciado.
+
+| Componente | Modelo de serviço | Justificativa |
+|---|---|---|
+| VM do ambiente acadêmico | IaaS no recorte didático | Fornece base computacional para executar o ambiente. Provedor, recursos e gestão do sistema operacional não são definidos neste repositório. |
+| Docker e Portainer | Camada PaaS didática, autogerenciada | Oferecem execução e gestão de containers, rede, configuração e volumes sobre a VM. Executar containers próprios não equivale, por si só, a contratar um PaaS gerenciado. |
+| Catálogo Express/frontend | SaaS da aplicação no recorte didático | Usuário consome funções de catálogo, perfil e assinatura pelo navegador, sem administrar a infraestrutura. É software operado pelo projeto. |
+| auth-service | Componente interno do SaaS | Entrega identidade, sessão, recuperação e gestão de papéis à aplicação; não é um SaaS externo contratado ou PaaS independente. |
+| log-service | Componente interno do SaaS | Entrega auditoria à aplicação e é executado na camada de containers do projeto. |
+| Redis | Componente de dados autogerenciado na camada PaaS didática | Container da stack com Stream e AOF em volume. Não há serviço Redis gerenciado/DBaaS contratado descrito pelo Compose. |
+| MinIO | Componente de objetos autogerenciado na camada PaaS didática | Container próprio e volume de fotos. Compatibilidade S3 não comprova contratação de armazenamento SaaS gerenciado. |
+| MariaDB | Dependência externa; hospedagem não determinada | Compose e código comprovam consumo de SQL, mas não dizem se o banco está em VM, container, máquina física ou serviço gerenciado. Não é classificado como IaaS/PaaS sem essa evidência. |
+| Stripe | SaaS externo de cobrança, consumido por API/Checkout | Projeto utiliza funções prontas de assinatura e pagamento de teste, sem operar a infraestrutura Stripe. Não hospeda o catálogo. |
+| SMTP/e-mail | Serviço externo; SaaS no exemplo Mailtrap | Auth consome SMTP; exemplo de desenvolvimento usa Mailtrap. SMTP é protocolo e não prova o modelo de hospedagem do servidor efetivamente configurado. |
+| TMDB | Serviço externo de dados consumido como API, no recorte SaaS | Fornece catálogo e imagens; o projeto consome sua função pronta, sem administrar a infraestrutura TMDB. Não é ambiente de execução do catálogo. |
+
+Modelos cloud não são sinônimos de tipos de software: banco, API, container e armazenamento podem ser oferecidos em arranjos distintos. A classificação acima separa a camada didática, os componentes próprios e os serviços externos sem inventar provedores ou contratos.
+
+Consulte a [documentação reversa](DOCUMENTACAO.md) para o diagrama completo, regras condicionais, modelo ER, fluxos, fontes e limitações.
 
 ## Autenticação, sessão e segurança
 
