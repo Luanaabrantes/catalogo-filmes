@@ -780,7 +780,7 @@ Uma consulta somente de leitura ao Stripe de teste confirmou que a assinatura pe
 
 ### Evidências reais da atividade 7
 
-As sete capturas abaixo foram revisadas e copiadas dos arquivos fornecidos em docs/evidencias_atividades, preservando os originais e as cinco evidências anteriores. Os nomes e as legendas descrevem o conteúdo real: perfil Gratuito, tela do Stripe Checkout, banco, transações, pagamento detalhado, webhook e perfil Premium. As telas Stripe mostram o ambiente de testes.
+As sete capturas abaixo foram revisadas e copiadas dos arquivos fornecidos em docs/evidencias_atividades, preservando os originais e as cinco evidências anteriores. Os nomes e as legendas descrevem o conteúdo real: perfil Gratuito, tela do Stripe Checkout, banco, transações, pagamento detalhado, webhook e perfil Premium. As telas Stripe mostram o ambiente de testes. As capturas documentam etapas e resultados em momentos distintos, não uma única sequência de compra. O perfil Gratuito e a tela do novo checkout não são vinculados aqui ao pagamento, à conta ou ao perfil Premium das evidências anteriores. A correspondência entre cliente e assinatura é indicada apenas onde os identificadores visíveis a sustentam.
 
 #### Perfil Gratuito — antes de assinar
 
@@ -812,17 +812,17 @@ Página Transações, aba Pagamentos, com um resultado de R$ 9,90 BRL, status Be
 
 Detalhes da transação de R$ 9,90 BRL: atividade Pagamento bem-sucedido, Resumo do Checkout com cliente, Plano Premium, assinatura e fatura, além do detalhamento do valor, tarifas e líquido. A assinatura e o cliente visíveis correspondem aos identificadores mostrados no banco. Embora contenha um bloco chamado Resumo do Checkout, esta imagem é o Dashboard de pagamento; não é uma captura da tela do Stripe Checkout.
 
-#### Webhook — entrega do evento invoice.paid
+#### Webhook — evento invoice.paid recebido e processado
 
 ![Stripe Workbench com entrega de invoice.paid ao webhook do catálogo, HTTP 200 e recebido true](docs/evidencias/atividade-7-stripe-webhook.png)
 
-No destino Catálogo Luana — Premium teste, a aba Entregas de eventos mostra invoice.paid entregue ao endereço público /api/stripe/webhook, com HTTP 200 e resposta recebido: true. Também aparece customer.subscription.created com HTTP 200. O evento selecionado é evt_1UOmRI6maMe1gZ6DaxfCS9H0, o mesmo ID encontrado na consulta anterior de stripe_eventos. A imagem mostra a entrega; o payload da fatura não está aberto, portanto o vínculo desse evento com a assinatura deve ser conferido no próprio evento Stripe, comparando cliente, assinatura e fatura.
+No destino Catálogo Luana — Premium teste, a aba Entregas de eventos mostra invoice.paid entregue ao endereço público /api/stripe/webhook, com HTTP 200 e resposta recebido: true. Também aparece customer.subscription.created com HTTP 200. O evento selecionado é evt_1UOmRI6maMe1gZ6DaxfCS9H0, o mesmo ID encontrado na consulta anterior de stripe_eventos. O HTTP 200 e a resposta recebido: true demonstram que o endpoint concluiu o processamento da requisição sem reportar erro. O payload da fatura não está aberto: a imagem, isoladamente, não estabelece o vínculo desse evento com uma conta ou pagamento específico. Esse vínculo pode ser conferido no próprio evento Stripe, comparando cliente, assinatura e fatura.
 
 #### Perfil Premium — benefício e data
 
 ![Perfil publicado com comparação Gratuito e Premium, selo Premium, assinatura ativa e próxima renovação em 09/11/2026](docs/evidencias/atividade-7-premium-perfil.png)
 
-Perfil na aplicação publicada com foto, comparação dos planos Gratuito e Premium de R$ 9,90/mês, selo Premium, situação Assinatura ativa e Próxima renovação: 09/11/2026. O plano gratuito mantém favoritos, comentários, foto e bio. A seção Filmes favoritos também aparece. Esta captura registra o resultado visível da interface; não demonstra, por si só, qual operação preencheu as datas no banco.
+Perfil na aplicação publicada com foto, comparação dos planos Gratuito e Premium de R$ 9,90/mês, selo Premium, situação Assinatura ativa e Próxima renovação: 09/11/2026. O plano gratuito mantém favoritos, comentários, foto e bio. A seção Filmes favoritos também aparece. Esta evidência anterior demonstra o benefício Premium no perfil, com selo, situação e data. Ela não é apresentada como retorno do novo checkout mostrado acima nem demonstra, por si só, qual operação preencheu as datas no banco.
 
 #### Ativação pelo webhook e sincronização posterior
 
@@ -832,7 +832,7 @@ A evidência de entrega invoice.paid e a consulta de banco devem ser lidas separ
 
 As capturas do perfil Gratuito e da tela do Stripe Checkout estão disponíveis acima; essas pendências foram resolvidas. As cinco evidências anteriores permanecem, incluindo o pagamento bem-sucedido, o webhook entregue e o perfil Premium com selo e data.
 
-**Captura adicional não encontrada:** um novo perfil após a conclusão do checkout mostrado nesta sequência. O perfil Premium anterior continua documentado, mas não deve ser apresentado como retorno desse novo checkout. O arquivo recebido com nome checkout-concluido mostra a tela de assinatura antes da confirmação.
+A documentação fica finalizada com as capturas existentes, sem pendência de uma nova imagem do perfil. O resultado Premium é demonstrado pela evidência anterior de perfil, em conjunto com as evidências anteriores de pagamento aprovado, webhook processado e registro Premium no banco, respeitando os limites de correlação descritos em cada legenda. Não há captura da confirmação final dentro do Stripe Checkout: a imagem disponível mostra a tela de assinatura com o botão Assinar.
 
 Consultas adicionais dos campos do período pago e de stripe_eventos podem complementar a documentação técnica. Não são requisitos explícitos do professor nem pendências obrigatórias desta entrega. O roteiro de capturas foi escrito antes da inclusão destas duas imagens; a disponibilidade atual está registrada nesta seção.
 
