@@ -780,7 +780,19 @@ Uma consulta somente de leitura ao Stripe de teste confirmou que a assinatura pe
 
 ### Evidências reais da atividade 7
 
-As cinco capturas abaixo foram revisadas e copiadas dos arquivos fornecidos em docs/evidencias_atividades, preservando os originais. Os nomes distinguem a lista de transações do detalhamento do pagamento. As telas do Dashboard Stripe mostram o ambiente de testes.
+As sete capturas abaixo foram revisadas e copiadas dos arquivos fornecidos em docs/evidencias_atividades, preservando os originais e as cinco evidências anteriores. Os nomes e as legendas descrevem o conteúdo real: perfil Gratuito, tela do Stripe Checkout, banco, transações, pagamento detalhado, webhook e perfil Premium. As telas Stripe mostram o ambiente de testes.
+
+#### Perfil Gratuito — antes de assinar
+
+![Perfil publicado com plano atual Gratuito, comparação com Premium de R$ 9,90 por mês e botão Assinar Premium](docs/evidencias/atividade-7-perfil-gratuito.png)
+
+A aplicação publicada mostra Seu plano atual: Gratuito, o resumo Plano gratuito e o botão Assinar Premium — R$ 9,90/mês. A comparação mantém catálogo, favoritos, comentários, foto e bio no Gratuito; Premium acrescenta o selo durante o período pago. A seção Filmes favoritos aparece com três itens. Esta é a captura do perfil antes de assinar, não a tela do checkout. O arquivo original recebido tinha o nome atividade-7-stripe-checkout.png.
+
+#### Stripe Checkout — assinatura em modo de teste
+
+![Tela do Stripe Checkout com Plano Premium de R$ 9,90 por mês, cartão de teste mascarado e botão Assinar](docs/evidencias/atividade-7-stripe-checkout.png)
+
+Tela hospedada no Stripe Checkout para Assinar Plano Premium por R$ 9,90 por mês, com a descrição Selo Premium no perfil do catálogo de filmes. Mostra o ambiente restrito de testes, e-mail do cliente, forma de pagamento de teste mascarada e botão Assinar. Esta imagem comprova a apresentação do checkout solicitado pelo professor. Embora o original se chame atividade-7-checkout-concluido.png, ainda há um botão Assinar: não é uma confirmação de pagamento nem o perfil após a conclusão.
 
 #### Banco — assinatura do usuário 39
 
@@ -816,13 +828,15 @@ Perfil na aplicação publicada com foto, comparação dos planos Gratuito e Pre
 
 A evidência de entrega invoice.paid e a consulta de banco devem ser lidas separadamente da atualização das datas. O backup validado anterior à migração complementar já continha premium = 1, a mesma assinatura e a mesma fatura, ainda sem os campos de período. A consulta posterior de leitura encontrou esses campos preenchidos, e o perfil mostra a data de renovação. Isso distingue a ativação anterior do preenchimento posterior das datas. Como não há histórico da sincronização no banco e o print SQL não exibe o período, as imagens não comprovam qual execução preencheu as datas. Uma sincronização não deve ser apresentada como um novo webhook recebido.
 
-#### Pendências de captura
+#### Cobertura das evidências e complemento opcional
 
-- **Checkout solicitado pelo professor:** não foi encontrado print da tela do Stripe Checkout em docs. O arquivo previsto é docs/evidencias/atividade-7-stripe-checkout.png. As imagens de transações e pagamento detalhado não substituem essa evidência. Use uma captura real do fluxo já realizado, se disponível; esta revisão não criou checkout nem pagamento.
-- **Perfil gratuito:** falta a captura do perfil com o plano Gratuito como plano atual. A comparação de planos no perfil Premium não substitui essa evidência.
-- **Período pago no banco:** o print disponível não mostra início/fim do período pago nem os eventos persistidos. Para complementar, capture consultas somente de leitura desses campos e de stripe_eventos, sem expor segredos.
+As capturas do perfil Gratuito e da tela do Stripe Checkout estão disponíveis acima; essas pendências foram resolvidas. As cinco evidências anteriores permanecem, incluindo o pagamento bem-sucedido, o webhook entregue e o perfil Premium com selo e data.
 
-O [roteiro de evidências](docs/evidencias/atividade-7-roteiro.md) registra os arquivos disponíveis e as pendências. Nenhuma imagem foi fabricada, e esta revisão não executou sincronização, alterações no banco, pagamento ou deploy.
+**Captura adicional não encontrada:** um novo perfil após a conclusão do checkout mostrado nesta sequência. O perfil Premium anterior continua documentado, mas não deve ser apresentado como retorno desse novo checkout. O arquivo recebido com nome checkout-concluido mostra a tela de assinatura antes da confirmação.
+
+Consultas adicionais dos campos do período pago e de stripe_eventos podem complementar a documentação técnica. Não são requisitos explícitos do professor nem pendências obrigatórias desta entrega. O roteiro de capturas foi escrito antes da inclusão destas duas imagens; a disponibilidade atual está registrada nesta seção.
+
+Nenhuma imagem foi fabricada, e esta revisão não executou sincronização, alterações no banco, checkout, pagamento ou deploy.
 
 ## Tecnologias
 
