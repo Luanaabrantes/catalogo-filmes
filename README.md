@@ -776,11 +776,53 @@ Foram executados **84 testes, zero falhas**, OpenAPI válido para catálogo/auth
 
 O banco remoto 35.226.64.52:3306/IAC_2026_02_luana_abrantes foi confirmado por conexão direta. Um backup atualizado das sete tabelas, incluindo premium_assinaturas e stripe_eventos, foi restaurado em MariaDB isolado e comparado registro a registro. O complemento foi aplicado, com oito colunas conferidas e preservação dos dados anteriores: 30 usuários, 31 favoritos, 3 perfis, 19 comentários, 30 tokens de redefinição, 1 assinatura e 2 eventos. Backup e manifestos permanecem privados e ignorados pelo Git.
 
-Uma consulta somente de leitura ao Stripe de teste confirmou que a assinatura persistida, o cliente, a metadata usuario_id e a fatura paga pertencem ao usuário **39**. A identidade não foi escolhida pelo nome. Após atualizar a imagem no Portainer, execute a prévia **node scripts/sincronizar-premium.js --usuario-id 39** e, se os dados estiverem corretos, **node scripts/sincronizar-premium.js --usuario-id 39 --aplicar** no Console do catálogo em /app. **A sincronização aplicada e a nova interface publicada ainda não foram verificadas.** Não foi feito novo pagamento ou deploy.
+Uma consulta somente de leitura ao Stripe de teste confirmou que a assinatura persistida, o cliente, a metadata usuario_id e a fatura paga pertencem ao usuário **39**. A identidade não foi escolhida pelo nome. Após atualizar a imagem no Portainer, execute a prévia **node scripts/sincronizar-premium.js --usuario-id 39** e, se os dados estiverem corretos, **node scripts/sincronizar-premium.js --usuario-id 39 --aplicar** no Console do catálogo em /app. A captura de perfil abaixo registra a interface publicada com selo e data; ela não comprova uma execução específica de sincronização. A revisão das evidências não executou sincronização, pagamento ou deploy.
 
-### Evidências organizadas, sem prints inventados
+### Evidências reais da atividade 7
 
-Siga [o roteiro da atividade 7](docs/evidencias/atividade-7-roteiro.md): gratuito → checkout de teste concluído → pagamento confirmado → banco após webhook → perfil Premium com selo e data. As novas capturas estão pendentes. Não reutilize imagens do Leonardo como evidência deste catálogo, nem revele segredos, hashes de senha ou dados do cartão.
+As cinco capturas abaixo foram revisadas e copiadas dos arquivos fornecidos em docs/evidencias_atividades, preservando os originais. Os nomes distinguem a lista de transações do detalhamento do pagamento. As telas do Dashboard Stripe mostram o ambiente de testes.
+
+#### Banco — assinatura do usuário 39
+
+![Consulta no MySQL Workbench: usuário 39 com premium 1, status active e identificadores Stripe](docs/evidencias/atividade-7-premium-banco.png)
+
+Consulta SELECT em premium_assinaturas filtrada por usuario_id = 39, com um registro retornado: premium = 1, status = active e identificadores do cliente, da assinatura e da fatura paga. A captura não exibe os campos do período pago nem a tabela stripe_eventos; isoladamente, não comprova quando ou por qual processamento o estado foi atualizado.
+
+#### Stripe — lista de transações
+
+![Dashboard Stripe de testes com transação de R$ 9,90 bem-sucedida para criação da assinatura](docs/evidencias/atividade-7-stripe-transacoes.png)
+
+Página Transações, aba Pagamentos, com um resultado de R$ 9,90 BRL, status Bem-sucedido e descrição Subscription creation, em 9 de outubro de 2026. É uma lista administrativa de pagamentos no Dashboard, não a tela do checkout apresentada ao assinante.
+
+#### Stripe — pagamento detalhado
+
+![Detalhamento no Dashboard Stripe: pagamento de R$ 9,90 bem-sucedido e resumo da assinatura Premium](docs/evidencias/atividade-7-stripe-pagamento-detalhado.png)
+
+Detalhes da transação de R$ 9,90 BRL: atividade Pagamento bem-sucedido, Resumo do Checkout com cliente, Plano Premium, assinatura e fatura, além do detalhamento do valor, tarifas e líquido. A assinatura e o cliente visíveis correspondem aos identificadores mostrados no banco. Embora contenha um bloco chamado Resumo do Checkout, esta imagem é o Dashboard de pagamento; não é uma captura da tela do Stripe Checkout.
+
+#### Webhook — entrega do evento invoice.paid
+
+![Stripe Workbench com entrega de invoice.paid ao webhook do catálogo, HTTP 200 e recebido true](docs/evidencias/atividade-7-stripe-webhook.png)
+
+No destino Catálogo Luana — Premium teste, a aba Entregas de eventos mostra invoice.paid entregue ao endereço público /api/stripe/webhook, com HTTP 200 e resposta recebido: true. Também aparece customer.subscription.created com HTTP 200. O evento selecionado é evt_1UOmRI6maMe1gZ6DaxfCS9H0, o mesmo ID encontrado na consulta anterior de stripe_eventos. A imagem mostra a entrega; o payload da fatura não está aberto, portanto o vínculo desse evento com a assinatura deve ser conferido no próprio evento Stripe, comparando cliente, assinatura e fatura.
+
+#### Perfil Premium — benefício e data
+
+![Perfil publicado com comparação Gratuito e Premium, selo Premium, assinatura ativa e próxima renovação em 09/11/2026](docs/evidencias/atividade-7-premium-perfil.png)
+
+Perfil na aplicação publicada com foto, comparação dos planos Gratuito e Premium de R$ 9,90/mês, selo Premium, situação Assinatura ativa e Próxima renovação: 09/11/2026. O plano gratuito mantém favoritos, comentários, foto e bio. A seção Filmes favoritos também aparece. Esta captura registra o resultado visível da interface; não demonstra, por si só, qual operação preencheu as datas no banco.
+
+#### Ativação pelo webhook e sincronização posterior
+
+A evidência de entrega invoice.paid e a consulta de banco devem ser lidas separadamente da atualização das datas. O backup validado anterior à migração complementar já continha premium = 1, a mesma assinatura e a mesma fatura, ainda sem os campos de período. A consulta posterior de leitura encontrou esses campos preenchidos, e o perfil mostra a data de renovação. Isso distingue a ativação anterior do preenchimento posterior das datas. Como não há histórico da sincronização no banco e o print SQL não exibe o período, as imagens não comprovam qual execução preencheu as datas. Uma sincronização não deve ser apresentada como um novo webhook recebido.
+
+#### Pendências de captura
+
+- **Checkout solicitado pelo professor:** não foi encontrado print da tela do Stripe Checkout em docs. O arquivo previsto é docs/evidencias/atividade-7-stripe-checkout.png. As imagens de transações e pagamento detalhado não substituem essa evidência. Use uma captura real do fluxo já realizado, se disponível; esta revisão não criou checkout nem pagamento.
+- **Perfil gratuito:** falta a captura do perfil com o plano Gratuito como plano atual. A comparação de planos no perfil Premium não substitui essa evidência.
+- **Período pago no banco:** o print disponível não mostra início/fim do período pago nem os eventos persistidos. Para complementar, capture consultas somente de leitura desses campos e de stripe_eventos, sem expor segredos.
+
+O [roteiro de evidências](docs/evidencias/atividade-7-roteiro.md) registra os arquivos disponíveis e as pendências. Nenhuma imagem foi fabricada, e esta revisão não executou sincronização, alterações no banco, pagamento ou deploy.
 
 ## Tecnologias
 
