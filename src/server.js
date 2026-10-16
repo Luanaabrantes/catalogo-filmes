@@ -33,6 +33,9 @@ const PORT = process.env.PORT || 3000;
 // MIDDLEWARES
 // ========================================
 
+const premium = require('./premium').criarPremium();
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), premium.webhook);
+
 // Permite receber JSON
 app.use(express.json());
 
@@ -45,6 +48,7 @@ app.use(
 
 // Permite trabalhar com cookies
 app.use(cookieParser());
+app.use('/api/premium', premium.router);
 
 // Documentação de leitura; os serviços internos continuam privados.
 const { readiness, http } = require('./saude');

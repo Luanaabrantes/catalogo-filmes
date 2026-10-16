@@ -1255,3 +1255,20 @@ a {
 @media (prefers-reduced-motion: reduce) {
     .perfil-page .admin-action-button, .perfil-favoritos .filme-card { transition: none; }
 }
+
+/* Planos: apresentação própria, independente dos papéis usuario/admin. */
+.perfil-planos { margin: 0 40px 28px; }
+.perfil-planos > h3 { font-size: 24px; margin-bottom: 10px; }
+.perfil-planos-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 22px 0; }
+.perfil-plano { border: 1px solid #354156; border-radius: 16px; padding: 24px; background: #f8fafc; color: #182b45; }
+.perfil-plano h4 { font-size: 24px; margin: 12px 0; }
+.perfil-plano-preco { color: #8b5b0b; font-size: 28px; font-weight: 700; margin: 16px 0; }
+.perfil-plano-preco span { font-size: 14px; font-weight: 400; }
+.perfil-plano ul { padding-left: 22px; line-height: 1.8; margin: 16px 0 24px; }
+.perfil-plano-premium { border-color: #c9a85d; background: #fff9ec; }
+.perfil-plano-atual { box-shadow: 0 0 0 2px #d7ad57; }
+.perfil-selo-premium { display: inline-block; background: #f5cb70; color: #242011; padding: 8px 14px; border-radius: 30px; }
+.perfil-selo-premium[hidden] { display: none; }
+.perfil-assinatura { border-top: 1px solid #354156; padding-top: 18px; margin-bottom: 20px; line-height: 1.7; }
+#situacaoAssinatura { font-weight: 600; }
+@media (max-width: 600px) { .perfil-planos { margin: 0 24px 24px; } .perfil-planos-grade { grid-template-columns: 1fr; } }

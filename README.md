@@ -665,6 +665,181 @@ Recuperação do log-service para healthy após restaurar o Redis, sem reiniciar
 
 Endpoint /metrics com HTTP 200, contador de requisições e histograma de latência por método, rota e status.
 
+## Atividade 7 — Plano Premium: cobrança com Stripe
+
+Atividade ISW055, professor [@siriani](https://github.com/siriani). A comparação dos planos e a sequência de evidências usam como referência [o projeto do Leonardo](https://github.com/leonardoricci-tsi/api_filme_), adaptadas a este catálogo: **Gratuito** mantém catálogo, favoritos, comentários, foto e bio; **Premium**, por **R$ 9,90/mês**, acrescenta o selo no perfil durante o período efetivamente pago. Premium continua separado dos papéis usuario/admin.
+
+### Informação do assinante e validação de acesso
+
+O perfil mostra plano, valor, situação e, quando disponível, **Próxima renovação: DD/MM/AAAA** ou **Seu acesso Premium termina em DD/MM/AAAA**. Datas reais são formatadas em America/Sao_Paulo. Pagamento pendente mostra regularização. Se não houver data, a linha é omitida. IDs técnicos não aparecem na interface.
+
+O SDK oficial Stripe 23 usa explicitamente a API **2026-09-30.endive**. Consulte [linha da fatura](https://docs.stripe.com/api/invoice-line-item/object), [item da assinatura](https://docs.stripe.com/api/subscription_items/object) e [assinatura](https://docs.stripe.com/api/subscriptions/object). Os campos também foram conferidos nos tipos do SDK. O período pago vem de invoice.lines.data[].period.start/end de uma linha do preço correto, não proporcional, ligada ao item e à assinatura. A próxima renovação vem de subscription.items.data[].current_period_end. Cancelamento usa cancel_at_period_end/cancel_at; canceled_at não é usado como término, pois pode representar o momento do pedido. Fatura paga usa status=paid, não o antigo booleano paid.
+
+GET /api/premium/status calcula acesso pelo usuário da sessão, vínculos, preço, período e situação persistidos, sem chamar Stripe por requisição. Ignora IDs enviados pelo navegador e não expõe cliente, assinatura ou fatura. O campo persistido premium é apenas uma projeção: sozinho não autoriza acesso após o período passar. O middleware exigirPremium, exportado por criarPremium, usa a mesma regra para benefícios futuros, depois do middleware de sessão. Favoritos e comentários permanecem gratuitos.
+
+POST /api/premium/checkout continua autenticado e define usuário, cliente, preço e URLs no backend. Reutiliza checkout aberto e impede assinatura duplicada. Preço deve ser de teste, ativo, BRL e 990 centavos/mês. O redirecionamento de sucesso não concede Premium.
+
+POST /api/stripe/webhook continua antes do parser JSON, com bytes brutos e assinatura validada pelo SDK. invoice.paid consulta a fatura atual e confere pagamento, moeda/valor, usuário/cliente/assinatura/item/preço e período. Assinatura ativa sozinha não comprova pagamento. Situação vem de uma consulta atual ao Stripe sob lock, sem confiar no snapshot antigo. state_event_created protege a situação mais recente; períodos pagos só avançam, nunca são encurtados por eventos antigos. Períodos pagos consecutivos são unidos, preservando acesso quando uma renovação é paga antecipadamente.
+
+Eventos têm ID único em stripe_eventos e atualização transacional. Duplicatas não reaplicam alterações; falhas fazem rollback e retornam 503 para reenvio. Não são armazenados payloads, cartão, CVV, validade ou mensagens internas Stripe.
+
+Cancelamento programado mantém acesso até o menor limite entre fim pago e data de cancelamento. Ao expirar sem renovação paga, o backend nega Premium mesmo sem novo webhook. Falha de pagamento mostra regularização e preserva somente o período já pago ainda válido. Cancelamento imediato ou estado não permitido retira acesso.
+
+### Variáveis exclusivamente de teste
+
+Use somente o .env local ignorado pelo Git ou as variáveis privadas da stack. Produto de teste existente: prod_VPF449RTyeo8rr.
+
+| Variável | Configuração |
+|---|---|
+| STRIPE_SECRET_KEY | Chave de teste iniciada por sk_test_; nunca live |
+| STRIPE_PRICE_ID | price_1UOQaV6maMe1gZ6DZBOAsuwh |
+| STRIPE_WEBHOOK_SECRET | Segredo do endpoint Dashboard publicado ou listener CLI local, conforme ambiente |
+| APP_BASE_URL | Publicado: https://luana-abrantes-isw055.lapps.studio; local: http://localhost:3000 |
+
+Compose passa essas variáveis somente ao catálogo. Chaves de produção e objetos/eventos livemode=true são rejeitados. NODE_ENV=production não autoriza Stripe live. Sem Stripe configurado, as funções anteriores continuam disponíveis e assinar retorna erro claro.
+
+### Migração complementar segura
+
+A migração original database/migracao-atividade7.sql já criou as duas tabelas no banco publicado confirmado IAC_2026_02_luana_abrantes. O novo complemento **database/migracao-atividade7-periodo.sql** adiciona apenas oito campos: preço, início/fim pago, cancelamento programado/data, renovação, pagamento pendente e marca temporal de evento. Não inventa datas para assinaturas existentes.
+
+Faça **novo backup atualizado**, incluindo a assinatura já paga e as tabelas Premium, e valide a restauração. O backup anterior à criação dessas tabelas não substitui esse novo backup. Confira o destino diretamente no Console do catálogo publicado:
+
+~~~sh
+node -e "console.log(JSON.stringify({host:process.env.DB_HOST,porta:process.env.DB_PORT,banco:process.env.DB_NAME}))"
+~~~
+
+Aplique o complemento com sua ferramenta SQL autorizada **antes de atualizar a aplicação**. ADD COLUMN IF NOT EXISTS é reexecutável, mas DDL do MariaDB faz commit implícito: confira estrutura em falha parcial. Não remova tabelas ou volumes. Para uma instalação nova, node scripts/migrar-premium.js --aplicar executa original e complemento; no host, o .env deve apontar ao destino confirmado.
+
+### Sincronizar a assinatura já paga da Luana
+
+Depois da migração e da atualização autorizada, no Console do catálogo em /app, execute os comandos abaixo, substituindo ID_DA_LUANA pelo ID numérico real obtido na sua ferramenta SQL privada:
+
+~~~sh
+node scripts/sincronizar-premium.js --usuario-id ID_DA_LUANA
+node scripts/sincronizar-premium.js --usuario-id ID_DA_LUANA --aplicar
+~~~
+
+O primeiro comando é **prévia**, sem UPDATE no banco. A sincronização consulta a assinatura existente e pagina suas faturas pagas, valida vínculos/preço e usa o período real da fatura paga com término mais recente. Somente --aplicar grava transacionalmente. Não cria cliente, checkout, assinatura, fatura ou pagamento. A saída contém apenas situação pública, sem IDs Stripe ou dados de cartão. Não há endpoint HTTP de sincronização ou alteração que aceite usuário de terceiros.
+
+Se faltar cliente vinculado ou houver ambiguidade/divergência de metadata/cliente, o comando falha fechado. Confira os vínculos do Checkout original; não ative Premium manualmente. Não exige novo pagamento nem segredo no chat.
+
+### Atualização do Portainer
+
+Esta melhoria não faz merge nem deploy. O workflow publica quatro imagens GHCR após verificações em push da branch atividade-7-stripe-premium, por tag sha-HASH_COMPLETO, sem alterar latest. A tag sha-1c2912ad6f6e0aebd2ba031e3746020ec6b04c8e contém a versão anterior. Use o novo commit somente após o job publicar aprovado.
+
+1. Confira o banco real e faça o novo backup; aplique **migracao-atividade7-periodo.sql** e verifique os oito campos, preservando registros.
+2. Use a **mesma stack**. Se usa Git: repositório https://github.com/Luanaabrantes/catalogo-filmes, referência refs/heads/atividade-7-stripe-premium, arquivo docker-compose.portainer.yml. Se usa Web editor, mantenha essa modalidade e o conteúdo desse arquivo.
+3. Defina IMAGE_TAG=sha-HASH_COMPLETO_DO_NOVO_COMMIT. Preserve todas as variáveis existentes, a porta 8216:3000, rede catalogo-network/subnet 10.88.0.0/24 e volumes minio-data e audit-redis-data. Não recrie a stack ou exclua volumes.
+4. Atualize pedindo pull das imagens; aguarde saúde dos serviços. Confira /live, /health, login, foto, bio, favoritos e comentários.
+5. Execute a prévia e a sincronização acima. Recarregue o perfil da Luana e confira situação/data, sem repetir o checkout.
+6. No Dashboard de **testes**, mantenha endpoint snapshot/API 2026-09-30.endive em **https://luana-abrantes-isw055.lapps.studio/api/stripe/webhook**. Eventos: invoice.paid, invoice.payment_failed, customer.subscription.created, customer.subscription.updated, customer.subscription.deleted. O segredo desse endpoint vai diretamente no STRIPE_WEBHOOK_SECRET privado do catálogo, não no Git/chat nem substituído pelo segredo CLI.
+
+Verificação administrativa do período, substituindo o ID:
+
+~~~sql
+SELECT usuario_id, status, premium,
+       FROM_UNIXTIME(paid_period_start) AS inicio_pago,
+       FROM_UNIXTIME(paid_period_end) AS fim_pago,
+       cancel_at_period_end, payment_problem,
+       (stripe_customer_id IS NOT NULL AND stripe_subscription_id IS NOT NULL
+        AND stripe_paid_invoice_id IS NOT NULL
+        AND stripe_price_id = 'price_1UOQaV6maMe1gZ6DZBOAsuwh'
+        AND paid_period_start <= UNIX_TIMESTAMP()
+        AND paid_period_end > UNIX_TIMESTAMP()
+        AND (cancel_at IS NULL OR cancel_at > UNIX_TIMESTAMP())
+        AND status IN ('active','past_due','unpaid')) AS premium_efetivo
+FROM premium_assinaturas WHERE usuario_id = ID_DA_LUANA;
+~~~
+
+### Execução local e verificações
+
+Após conferir e fazer backup do destino local escolhido:
+
+~~~powershell
+docker compose build
+docker compose run --rm --no-deps catalogo node scripts/migrar-premium.js --aplicar
+docker compose up -d
+docker compose ps
+npm test
+npm run docs:generate
+npm run docs:validate
+node scripts/validar-premium-mariadb.js
+~~~
+
+CLI oficial no Windows: npm install -g @stripe/cli, depois stripe login e:
+
+~~~powershell
+stripe listen --events invoice.paid,invoice.payment_failed,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted --forward-to http://localhost:3000/api/stripe/webhook
+~~~
+
+Copie o segredo do listener diretamente ao .env local e recrie somente catálogo com docker compose up -d --no-deps --force-recreate catalogo. Não imprima o arquivo.
+
+Foram executados **84 testes, zero falhas**, OpenAPI válido para catálogo/auth e laboratório MariaDB 11.4 validando complemento reexecutável e preservação dos registros. Stripe é simulado nos testes, com assinatura criptográfica real do SDK. Casos incluem período vencido, renovação paga, falha, cancelamento programado, duplicatas, eventos fora de ordem, guarda Premium, isolamento da identidade e datas pt-BR/omissão.
+
+O banco remoto 35.226.64.52:3306/IAC_2026_02_luana_abrantes foi confirmado por conexão direta. Um backup atualizado das sete tabelas, incluindo premium_assinaturas e stripe_eventos, foi restaurado em MariaDB isolado e comparado registro a registro. O complemento foi aplicado, com oito colunas conferidas e preservação dos dados anteriores: 30 usuários, 31 favoritos, 3 perfis, 19 comentários, 30 tokens de redefinição, 1 assinatura e 2 eventos. Backup e manifestos permanecem privados e ignorados pelo Git.
+
+Uma consulta somente de leitura ao Stripe de teste confirmou que a assinatura persistida, o cliente, a metadata usuario_id e a fatura paga pertencem ao usuário **39**. A identidade não foi escolhida pelo nome. Após atualizar a imagem no Portainer, execute a prévia **node scripts/sincronizar-premium.js --usuario-id 39** e, se os dados estiverem corretos, **node scripts/sincronizar-premium.js --usuario-id 39 --aplicar** no Console do catálogo em /app. A captura de perfil abaixo registra a interface publicada com selo e data; ela não comprova uma execução específica de sincronização. A revisão das evidências não executou sincronização, pagamento ou deploy.
+
+### Evidências reais da atividade 7
+
+As sete capturas abaixo foram revisadas e copiadas dos arquivos fornecidos em docs/evidencias_atividades, preservando os originais e as cinco evidências anteriores. Os nomes e as legendas descrevem o conteúdo real: perfil Gratuito, tela do Stripe Checkout, banco, transações, pagamento detalhado, webhook e perfil Premium. As telas Stripe mostram o ambiente de testes. As capturas documentam etapas e resultados em momentos distintos, não uma única sequência de compra. O perfil Gratuito e a tela do novo checkout não são vinculados aqui ao pagamento, à conta ou ao perfil Premium das evidências anteriores. A correspondência entre cliente e assinatura é indicada apenas onde os identificadores visíveis a sustentam.
+
+#### Perfil Gratuito — antes de assinar
+
+![Perfil publicado com plano atual Gratuito, comparação com Premium de R$ 9,90 por mês e botão Assinar Premium](docs/evidencias/atividade-7-perfil-gratuito.png)
+
+A aplicação publicada mostra Seu plano atual: Gratuito, o resumo Plano gratuito e o botão Assinar Premium — R$ 9,90/mês. A comparação mantém catálogo, favoritos, comentários, foto e bio no Gratuito; Premium acrescenta o selo durante o período pago. A seção Filmes favoritos aparece com três itens. Esta é a captura do perfil antes de assinar, não a tela do checkout. O arquivo original recebido tinha o nome atividade-7-stripe-checkout.png.
+
+#### Stripe Checkout — assinatura em modo de teste
+
+![Tela do Stripe Checkout com Plano Premium de R$ 9,90 por mês, cartão de teste mascarado e botão Assinar](docs/evidencias/atividade-7-stripe-checkout.png)
+
+Tela hospedada no Stripe Checkout para Assinar Plano Premium por R$ 9,90 por mês, com a descrição Selo Premium no perfil do catálogo de filmes. Mostra o ambiente restrito de testes, e-mail do cliente, forma de pagamento de teste mascarada e botão Assinar. Esta imagem comprova a apresentação do checkout solicitado pelo professor. Embora o original se chame atividade-7-checkout-concluido.png, ainda há um botão Assinar: não é uma confirmação de pagamento nem o perfil após a conclusão.
+
+#### Banco — assinatura do usuário 39
+
+![Consulta no MySQL Workbench: usuário 39 com premium 1, status active e identificadores Stripe](docs/evidencias/atividade-7-premium-banco.png)
+
+Consulta SELECT em premium_assinaturas filtrada por usuario_id = 39, com um registro retornado: premium = 1, status = active e identificadores do cliente, da assinatura e da fatura paga. A captura não exibe os campos do período pago nem a tabela stripe_eventos; isoladamente, não comprova quando ou por qual processamento o estado foi atualizado.
+
+#### Stripe — lista de transações
+
+![Dashboard Stripe de testes com transação de R$ 9,90 bem-sucedida para criação da assinatura](docs/evidencias/atividade-7-stripe-transacoes.png)
+
+Página Transações, aba Pagamentos, com um resultado de R$ 9,90 BRL, status Bem-sucedido e descrição Subscription creation, em 9 de outubro de 2026. É uma lista administrativa de pagamentos no Dashboard, não a tela do checkout apresentada ao assinante.
+
+#### Stripe — pagamento detalhado
+
+![Detalhamento no Dashboard Stripe: pagamento de R$ 9,90 bem-sucedido e resumo da assinatura Premium](docs/evidencias/atividade-7-stripe-pagamento-detalhado.png)
+
+Detalhes da transação de R$ 9,90 BRL: atividade Pagamento bem-sucedido, Resumo do Checkout com cliente, Plano Premium, assinatura e fatura, além do detalhamento do valor, tarifas e líquido. A assinatura e o cliente visíveis correspondem aos identificadores mostrados no banco. Embora contenha um bloco chamado Resumo do Checkout, esta imagem é o Dashboard de pagamento; não é uma captura da tela do Stripe Checkout.
+
+#### Webhook — evento invoice.paid recebido e processado
+
+![Stripe Workbench com entrega de invoice.paid ao webhook do catálogo, HTTP 200 e recebido true](docs/evidencias/atividade-7-stripe-webhook.png)
+
+No destino Catálogo Luana — Premium teste, a aba Entregas de eventos mostra invoice.paid entregue ao endereço público /api/stripe/webhook, com HTTP 200 e resposta recebido: true. Também aparece customer.subscription.created com HTTP 200. O evento selecionado é evt_1UOmRI6maMe1gZ6DaxfCS9H0, o mesmo ID encontrado na consulta anterior de stripe_eventos. O HTTP 200 e a resposta recebido: true demonstram que o endpoint concluiu o processamento da requisição sem reportar erro. O payload da fatura não está aberto: a imagem, isoladamente, não estabelece o vínculo desse evento com uma conta ou pagamento específico. Esse vínculo pode ser conferido no próprio evento Stripe, comparando cliente, assinatura e fatura.
+
+#### Perfil Premium — benefício e data
+
+![Perfil publicado com comparação Gratuito e Premium, selo Premium, assinatura ativa e próxima renovação em 09/11/2026](docs/evidencias/atividade-7-premium-perfil.png)
+
+Perfil na aplicação publicada com foto, comparação dos planos Gratuito e Premium de R$ 9,90/mês, selo Premium, situação Assinatura ativa e Próxima renovação: 09/11/2026. O plano gratuito mantém favoritos, comentários, foto e bio. A seção Filmes favoritos também aparece. Esta evidência anterior demonstra o benefício Premium no perfil, com selo, situação e data. Ela não é apresentada como retorno do novo checkout mostrado acima nem demonstra, por si só, qual operação preencheu as datas no banco.
+
+#### Ativação pelo webhook e sincronização posterior
+
+A evidência de entrega invoice.paid e a consulta de banco devem ser lidas separadamente da atualização das datas. O backup validado anterior à migração complementar já continha premium = 1, a mesma assinatura e a mesma fatura, ainda sem os campos de período. A consulta posterior de leitura encontrou esses campos preenchidos, e o perfil mostra a data de renovação. Isso distingue a ativação anterior do preenchimento posterior das datas. Como não há histórico da sincronização no banco e o print SQL não exibe o período, as imagens não comprovam qual execução preencheu as datas. Uma sincronização não deve ser apresentada como um novo webhook recebido.
+
+#### Cobertura das evidências e complemento opcional
+
+As capturas do perfil Gratuito e da tela do Stripe Checkout estão disponíveis acima; essas pendências foram resolvidas. As cinco evidências anteriores permanecem, incluindo o pagamento bem-sucedido, o webhook entregue e o perfil Premium com selo e data.
+
+A documentação fica finalizada com as capturas existentes, sem pendência de uma nova imagem do perfil. O resultado Premium é demonstrado pela evidência anterior de perfil, em conjunto com as evidências anteriores de pagamento aprovado, webhook processado e registro Premium no banco, respeitando os limites de correlação descritos em cada legenda. Não há captura da confirmação final dentro do Stripe Checkout: a imagem disponível mostra a tela de assinatura com o botão Assinar.
+
+Consultas adicionais dos campos do período pago e de stripe_eventos podem complementar a documentação técnica. Não são requisitos explícitos do professor nem pendências obrigatórias desta entrega. O roteiro de capturas foi escrito antes da inclusão destas duas imagens; a disponibilidade atual está registrada nesta seção.
+
+Nenhuma imagem foi fabricada, e esta revisão não executou sincronização, alterações no banco, checkout, pagamento ou deploy.
+
 ## Tecnologias
 
 Node.js, Express, JavaScript, HTML, CSS, MariaDB, MySQL2, `bcryptjs`, `jsonwebtoken`, Nodemailer, API TMDB, Redis, Redis Streams, MinIO, Multer, Sharp, Docker e Docker Compose.

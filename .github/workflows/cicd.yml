@@ -43,14 +43,14 @@ jobs:
           docker run --rm --network none ci-minio --version
           docker save ci-catalogo ci-auth-service ci-log-service ci-minio -o imagens.tar
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'push' && github.ref == 'refs/heads/atividade-extra-cicd'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/atividade-extra-cicd' || github.ref == 'refs/heads/atividade-7-stripe-premium')
         with:
           name: imagens-verificadas
           path: imagens.tar
           retention-days: 1
   publicar:
     needs: verificar
-    if: github.event_name == 'push' && github.ref == 'refs/heads/atividade-extra-cicd'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/atividade-extra-cicd' || github.ref == 'refs/heads/atividade-7-stripe-premium')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,7 +73,10 @@ jobs:
           for service in catalogo auth-service log-service minio; do
             image="ghcr.io/$namespace/catalogo-filmes-$service"
             docker tag "ci-$service" "$image:sha-$GITHUB_SHA"
-            docker tag "ci-$service" "$image:latest"
             docker push "$image:sha-$GITHUB_SHA"
-            docker push "$image:latest"
+            # Premium publica por SHA sem mudar a referência latest da atividade anterior.
+            if [ "$GITHUB_REF" = refs/heads/atividade-extra-cicd ]; then
+              docker tag "ci-$service" "$image:latest"
+              docker push "$image:latest"
+            fi
           done
