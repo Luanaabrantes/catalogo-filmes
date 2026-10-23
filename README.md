@@ -1,3 +1,4 @@
+> Este projeto continua no [GiroRural](https://github.com/Luanaabrantes/girorural).
 # Catálogo de Filmes — Tom Hanks
 
 Aplicação acadêmica desenvolvida para a disciplina **Introdução à Computação em Nuvem (ISW055)**, no semestre 2026.2, com catálogo de filmes, autenticação, controle de acesso por papel, auditoria centralizada, perfil com foto e plano Premium integrado ao Stripe de teste.
